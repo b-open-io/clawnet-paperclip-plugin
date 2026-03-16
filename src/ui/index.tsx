@@ -13,6 +13,11 @@ import type {
 
 // ---------------------------------------------------------------------------
 // Types
+//
+// These are ClawNet-registry-specific shapes returned by the worker's data
+// handlers, not Paperclip SDK domain types. The SDK `Agent` type (from
+// `@paperclipai/plugin-sdk`) represents Paperclip agents — it is not
+// re-exported on the `@paperclipai/plugin-sdk/ui` subpath.
 // ---------------------------------------------------------------------------
 
 type SyncStatus = {
@@ -21,6 +26,7 @@ type SyncStatus = {
   skillCount: number;
 };
 
+/** A ClawNet registry agent template — distinct from the SDK's `Agent` type. */
 type ClawNetAgent = {
   id: string;
   slug: string;

@@ -7,6 +7,7 @@ import {
   type PluginJobContext,
   type ToolResult,
   type ToolRunContext,
+  type Agent,
 } from "@paperclipai/plugin-sdk";
 import type { PluginHealthDiagnostics, PluginConfigValidationResult } from "@paperclipai/plugin-sdk";
 import { createClawNetClient } from "./clawnet-api.js";
@@ -457,13 +458,15 @@ function registerDataHandlers(ctx: PluginContext): void {
           };
         }
 
+        const paperclipAgent: Pick<Agent, "id" | "name" | "status" | "role"> = {
+          id: agent.id,
+          name: agent.name,
+          status: agent.status,
+          role: agent.role,
+        };
+
         return {
-          paperclipAgent: {
-            id: agent.id,
-            name: agent.name,
-            status: agent.status,
-            role: agent.role,
-          },
+          paperclipAgent,
           clawnetLink: linkState,
           clawnetTemplate,
         };
