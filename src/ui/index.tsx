@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  Component,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ErrorInfo,
+  type ReactNode,
+} from "react";
 import {
   usePluginAction,
   usePluginData,
@@ -10,6 +19,105 @@ import type {
   PluginSidebarProps,
   PluginWidgetProps,
 } from "@paperclipai/plugin-sdk/ui";
+
+// ---------------------------------------------------------------------------
+// Stream safety — isolate usePluginStream behind an error boundary so that
+// a 501 (stream bus not wired up) or any other SSE failure does not crash
+// the entire plugin component. Data from usePluginData remains the primary
+// source; stream data is a live overlay when available.
+// ---------------------------------------------------------------------------
+
+type SafeStreamData<T> = { events: T[]; lastEvent: T | null; connected: boolean };
+
+const EMPTY_STREAM_DATA: SafeStreamData<never> = { events: [], lastEvent: null, connected: false };
+
+/**
+ * Error boundary that silently swallows stream-related render errors.
+ * When the wrapped child (which calls usePluginStream) throws, this
+ * boundary catches the error and renders nothing — the parent component
+ * continues to function using usePluginData results.
+ */
+class StreamErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean }
+> {
+  override state = { hasError: false };
+
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
+  }
+
+  override componentDidCatch(error: unknown, info: ErrorInfo): void {
+    console.warn("[clawnet] stream error caught, degrading gracefully:", error, info.componentStack);
+  }
+
+  override render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
+}
+
+/**
+ * Generic stream connector component. Calls usePluginStream for a given
+ * channel and reports results upward via a stable callback. Rendered
+ * inside StreamErrorBoundary so any hook error is caught.
+ */
+function StreamConnector<T>({
+  channel,
+  companyId,
+  onUpdate,
+}: {
+  channel: string;
+  companyId: string | undefined;
+  onUpdate: (data: SafeStreamData<T>) => void;
+}) {
+  const stream = usePluginStream<T>(channel, { companyId });
+
+  useEffect(() => {
+    onUpdate({
+      events: stream.events,
+      lastEvent: stream.lastEvent,
+      connected: stream.connected,
+    });
+  }, [stream.events, stream.lastEvent, stream.connected, onUpdate]);
+
+  return null;
+}
+
+/**
+ * Hook that provides stream data safely for any channel. Returns a stable
+ * empty result until the stream connector reports data, and degrades to
+ * the empty result if the stream connector crashes.
+ */
+function useSafeStream<T>(
+  channel: string,
+  companyId: string | null | undefined,
+): {
+  streamData: SafeStreamData<T>;
+  StreamConnectorElement: ReactNode;
+} {
+  const [streamData, setStreamData] = useState<SafeStreamData<T>>(
+    EMPTY_STREAM_DATA as SafeStreamData<T>,
+  );
+
+  const handleUpdate = useCallback((data: SafeStreamData<T>) => {
+    setStreamData(data);
+  }, []);
+
+  const effectiveCompanyId = companyId ?? undefined;
+
+  const element = (
+    <StreamErrorBoundary>
+      <StreamConnector<T>
+        channel={channel}
+        companyId={effectiveCompanyId}
+        onUpdate={handleUpdate}
+      />
+    </StreamErrorBoundary>
+  );
+
+  return { streamData, StreamConnectorElement: element };
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -381,10 +489,8 @@ export function ClawNetFleetWidget({ context }: PluginWidgetProps) {
     syncParams,
   );
 
-  const fleetStream = // TODO(M4): import STREAM_CHANNELS from constants once UI bundle resolution is verified
-  usePluginStream<FleetStatusEvent>("clawnet:fleet-status", {
-    companyId: companyId ?? undefined,
-  });
+  const { streamData: fleetStream, StreamConnectorElement: fleetStreamEl } =
+    useSafeStream<FleetStatusEvent>("clawnet:fleet-status", companyId);
 
   const triggerSync = usePluginAction("trigger-sync");
   const [syncing, setSyncing] = useState(false);
@@ -429,6 +535,7 @@ export function ClawNetFleetWidget({ context }: PluginWidgetProps) {
 
   return (
     <div style={layoutStack}>
+      {fleetStreamEl}
       <div style={rowStyle}>
         <strong>ClawNet Fleet</strong>
         {fleetStream.connected ? (
@@ -852,42 +959,45 @@ function SyncProgressBar({
 }: {
   companyId: string | null;
 }) {
-  const syncProgress = // TODO(M4): import STREAM_CHANNELS from constants once UI bundle resolution is verified
-  usePluginStream<SyncProgressEvent>("clawnet:sync-progress", {
-    companyId: companyId ?? undefined,
-  });
+  const { streamData: syncProgress, StreamConnectorElement } =
+    useSafeStream<SyncProgressEvent>("clawnet:sync-progress", companyId);
 
   const latest = syncProgress.lastEvent;
-  if (!latest || !syncProgress.connected) return null;
+  if (!latest || !syncProgress.connected) {
+    return <>{StreamConnectorElement}</>;
+  }
 
   const pct = Math.min(100, Math.max(0, latest.progress));
 
   return (
-    <div style={{ ...subtleCardStyle, display: "grid", gap: "6px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={eyebrowStyle}>{latest.phase}</span>
-        <span style={{ fontSize: "11px", opacity: 0.6 }}>{pct}%</span>
-      </div>
-      <div
-        style={{
-          height: "4px",
-          borderRadius: "2px",
-          background: "color-mix(in srgb, var(--border) 50%, transparent)",
-          overflow: "hidden",
-        }}
-      >
+    <>
+      {StreamConnectorElement}
+      <div style={{ ...subtleCardStyle, display: "grid", gap: "6px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={eyebrowStyle}>{latest.phase}</span>
+          <span style={{ fontSize: "11px", opacity: 0.6 }}>{pct}%</span>
+        </div>
         <div
           style={{
-            height: "100%",
-            width: `${pct}%`,
+            height: "4px",
             borderRadius: "2px",
-            background: "var(--foreground)",
-            transition: "width 0.3s ease",
+            background: "color-mix(in srgb, var(--border) 50%, transparent)",
+            overflow: "hidden",
           }}
-        />
+        >
+          <div
+            style={{
+              height: "100%",
+              width: `${pct}%`,
+              borderRadius: "2px",
+              background: "var(--foreground)",
+              transition: "width 0.3s ease",
+            }}
+          />
+        </div>
+        <div style={{ fontSize: "11px", opacity: 0.6 }}>{latest.message}</div>
       </div>
-      <div style={{ fontSize: "11px", opacity: 0.6 }}>{latest.message}</div>
-    </div>
+    </>
   );
 }
 
