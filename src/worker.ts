@@ -120,17 +120,17 @@ async function performSync(ctx: PluginContext, streamProgress: boolean): Promise
     });
   }
 
-  const agents = await client.listAgents();
+  const agentResponse = await client.listAgents();
   let agentCount = 0;
 
-  for (const agent of agents) {
+  for (const agent of agentResponse.agents) {
     await ctx.entities.upsert({
       entityType: ENTITY_TYPES.clawnetAgent,
       scopeKind: "instance",
-      externalId: agent.slug || agent.id,
+      externalId: agent.slug || agent._id,
       title: agent.displayName || agent.name,
-      status: agent.status || "active",
-      data: agent,
+      status: agent.deleted ? "deleted" : "active",
+      data: agent as unknown as Record<string, unknown>,
     });
     agentCount++;
   }
@@ -153,17 +153,17 @@ async function performSync(ctx: PluginContext, streamProgress: boolean): Promise
     });
   }
 
-  const skills = await client.listSkills();
+  const skillResponse = await client.listSkills();
   let skillCount = 0;
 
-  for (const skill of skills) {
+  for (const skill of skillResponse.skills) {
     await ctx.entities.upsert({
       entityType: ENTITY_TYPES.clawnetSkill,
       scopeKind: "instance",
-      externalId: skill.slug || skill.id,
+      externalId: skill.slug || skill._id,
       title: skill.name,
       status: "available",
-      data: skill,
+      data: skill as unknown as Record<string, unknown>,
     });
     skillCount++;
   }
