@@ -6,7 +6,8 @@
 // ---------------------------------------------------------------------------
 
 export const PLUGIN_ID = "bopen-io.clawnet-plugin";
-export const PLUGIN_VERSION = "0.0.1";
+declare const __PLUGIN_VERSION__: string;
+export const PLUGIN_VERSION = __PLUGIN_VERSION__;
 export const PAGE_ROUTE = "clawnet";
 
 // ---------------------------------------------------------------------------
