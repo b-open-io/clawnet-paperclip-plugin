@@ -581,8 +581,6 @@ function registerActionHandlers(ctx: PluginContext): void {
       } catch (e) {
         errors.push("API key resolution failed: " + summarizeError(e));
       }
-    } else {
-      errors.push("No API key configured");
     }
 
     return { ok: errors.length === 0, errors };
@@ -880,24 +878,18 @@ const plugin: PaperclipPlugin = definePlugin({
       }
     }
 
-    // Validate clawnetApiKey (must be a secret reference string)
-    if (typed.clawnetApiKey !== undefined) {
-      if (typeof typed.clawnetApiKey !== "string") {
-        errors.push("clawnetApiKey must be a string (secret reference)");
-      } else if (typed.clawnetApiKey.length === 0) {
-        errors.push("clawnetApiKey cannot be empty");
-      }
-    }
-
-    // Attempt to resolve the secret to verify it works
-    if (currentContext && typed.clawnetApiKey && typeof typed.clawnetApiKey === "string") {
-      try {
-        const resolved = await currentContext.secrets.resolve(typed.clawnetApiKey);
-        if (!resolved || resolved.length === 0) {
-          errors.push("clawnetApiKey secret reference resolved to an empty value");
+    // Validate clawnetApiKey if provided (optional — not needed for read-only sync)
+    if (typed.clawnetApiKey && typeof typed.clawnetApiKey === "string" && typed.clawnetApiKey.length > 0) {
+      // Attempt to resolve the secret to verify it works
+      if (currentContext) {
+        try {
+          const resolved = await currentContext.secrets.resolve(typed.clawnetApiKey);
+          if (!resolved || resolved.length === 0) {
+            warnings.push("clawnetApiKey secret reference resolved to an empty value");
+          }
+        } catch (error) {
+          warnings.push(`clawnetApiKey secret resolution failed: ${summarizeError(error)}`);
         }
-      } catch (error) {
-        errors.push(`clawnetApiKey secret resolution failed: ${summarizeError(error)}`);
       }
     }
 

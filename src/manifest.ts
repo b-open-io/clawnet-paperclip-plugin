@@ -45,11 +45,6 @@ const manifest: PaperclipPluginManifestV1 = {
         title: "ClawNet API URL",
         default: DEFAULT_CONFIG.clawnetApiUrl,
       },
-      clawnetApiKey: {
-        type: "string",
-        title: "ClawNet API Key",
-        format: "secret-ref",
-      },
       syncIntervalMinutes: {
         type: "number",
         title: "Sync Interval (minutes)",

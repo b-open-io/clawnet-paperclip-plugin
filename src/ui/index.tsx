@@ -1103,14 +1103,34 @@ export function ClawNetMarketplacePage({ context }: PluginPageProps) {
   }
 
   function handleHireAgent(agent: ClawNetAgent) {
+    // Navigate to agent creation form
+    const createUrl = hostPath(
+      context.companyPrefix,
+      "/agents/new?adapterType=claude_local"
+    );
+
+    // Build agent details for the persistent toast
+    const details = [
+      `Name: ${agent.displayName}`,
+      agent.model ? `Model: ${agent.model}` : null,
+      agent.description
+        ? `Role: ${agent.description.length > 100 ? `${agent.description.slice(0, 100)}...` : agent.description}`
+        : null,
+      agent.skills.length > 0
+        ? `Skills: ${agent.skills.slice(0, 5).join(", ")}${agent.skills.length > 5 ? ` (+${agent.skills.length - 5} more)` : ""}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
     toast({
-      title: `Ready to hire: ${agent.displayName}`,
-      body: "Go to the Agents page and create a new agent. The template data from this ClawNet agent is ready to use.",
+      title: `Hiring: ${agent.displayName}`,
+      body: details,
       tone: "info",
-      ttlMs: 8000,
+      ttlMs: 30000,
       action: {
-        label: "Go to Agents",
-        href: hostPath(context.companyPrefix, "/agents"),
+        label: "Create Agent",
+        href: createUrl,
       },
     });
   }

@@ -18,7 +18,6 @@ const PLUGIN_ID = "bopen-io.clawnet-plugin";
 
 type ClawNetConfig = {
   clawnetApiUrl: string;
-  clawnetApiKey: string;
   syncIntervalMinutes: number;
 };
 
@@ -32,7 +31,6 @@ type SyncStatusData = {
 
 const DEFAULT_CONFIG: ClawNetConfig = {
   clawnetApiUrl: "https://clawnet.sh",
-  clawnetApiKey: "",
   syncIntervalMinutes: 15,
 };
 
@@ -166,10 +164,6 @@ function useSettingsConfig() {
             typeof raw.clawnetApiUrl === "string"
               ? raw.clawnetApiUrl
               : DEFAULT_CONFIG.clawnetApiUrl,
-          clawnetApiKey:
-            typeof raw.clawnetApiKey === "string"
-              ? raw.clawnetApiKey
-              : DEFAULT_CONFIG.clawnetApiKey,
           syncIntervalMinutes:
             typeof raw.syncIntervalMinutes === "number" &&
             Number.isFinite(raw.syncIntervalMinutes)
@@ -262,7 +256,6 @@ export function ClawNetSettingsPage({ context }: PluginSettingsPageProps) {
     try {
       const result = (await validateConfig({
         clawnetApiUrl: config.clawnetApiUrl,
-        clawnetApiKey: config.clawnetApiKey,
       })) as { ok: boolean; message?: string };
       if (result.ok) {
         toast({ title: "Connection successful", tone: "success" });
@@ -330,23 +323,6 @@ export function ClawNetSettingsPage({ context }: PluginSettingsPageProps) {
               />
               <span style={helpTextStyle}>
                 The base URL for the ClawNet registry API.
-              </span>
-            </label>
-
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>ClawNet API Key (secret ref)</span>
-              <input
-                style={inputStyle}
-                type="text"
-                value={config.clawnetApiKey}
-                onChange={(e) => setField("clawnetApiKey", e.target.value)}
-                placeholder="e.g. clawnet-api-key"
-              />
-              <span style={helpTextStyle}>
-                This is a reference name for a Paperclip secret, not the API key
-                itself. Create the secret in Paperclip Settings and enter its
-                reference name here. The worker resolves the actual value at
-                runtime via ctx.secrets.resolve().
               </span>
             </label>
 

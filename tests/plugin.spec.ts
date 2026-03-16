@@ -892,7 +892,7 @@ describe("ClawNet config validation", () => {
     expect(result.errors).toContain("clawnetApiUrl must be a string");
   });
 
-  it("rejects empty API key", async () => {
+  it("accepts empty API key (optional for read-only sync)", async () => {
     const harness = makeHarness();
     await setupPlugin(harness);
 
@@ -901,21 +901,18 @@ describe("ClawNet config validation", () => {
       clawnetApiKey: "",
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.errors).toContain("clawnetApiKey cannot be empty");
+    expect(result.ok).toBe(true);
   });
 
-  it("rejects non-string API key", async () => {
+  it("accepts missing API key (optional for read-only sync)", async () => {
     const harness = makeHarness();
     await setupPlugin(harness);
 
     const result = await plugin.definition.onValidateConfig!({
       clawnetApiUrl: "https://clawnet.sh",
-      clawnetApiKey: 12345,
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.errors).toContain("clawnetApiKey must be a string (secret reference)");
+    expect(result.ok).toBe(true);
   });
 
   it("warns when API URL is not set", async () => {
