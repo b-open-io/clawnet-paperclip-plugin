@@ -297,10 +297,10 @@ describe("ClawNet data handlers", () => {
       expect(result.agents[0].displayName).toBe("Alpha Agent");
     });
 
-    it("throws when companyId is missing", async () => {
-      await expect(
-        harness.getData(DATA_KEYS.clawnetAgents, {}),
-      ).rejects.toThrow("companyId is required");
+    it("returns empty list when companyId is missing (entities are instance-scoped)", async () => {
+      const result = await harness.getData<any>(DATA_KEYS.clawnetAgents, {});
+      expect(result.agents).toBeDefined();
+      expect(Array.isArray(result.agents)).toBe(true);
     });
   });
 
@@ -349,10 +349,10 @@ describe("ClawNet data handlers", () => {
       expect(result.skills[0].displayName).toBe("Deploy");
     });
 
-    it("throws when companyId is missing", async () => {
-      await expect(
-        harness.getData(DATA_KEYS.clawnetSkills, {}),
-      ).rejects.toThrow("companyId is required");
+    it("returns empty list when companyId is missing (entities are instance-scoped)", async () => {
+      const result = await harness.getData<any>(DATA_KEYS.clawnetSkills, {});
+      expect(result.skills).toBeDefined();
+      expect(Array.isArray(result.skills)).toBe(true);
     });
   });
 
