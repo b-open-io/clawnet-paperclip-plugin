@@ -31,6 +31,7 @@ export interface ClawNetAgent {
   description: string;
   model: string;
   color: string;
+  icon?: string;
   category?: string;
   authorBapId: string;
   latestVersion: string;

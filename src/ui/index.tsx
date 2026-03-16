@@ -142,6 +142,7 @@ type ClawNetAgent = {
   description: string | null;
   model: string | null;
   color: string | null;
+  icon: string | null;
   starCount: number;
   trustScore: number | null;
   attestations: string[];
@@ -721,7 +722,7 @@ function AgentCard({
       role="button"
       tabIndex={0}
     >
-      {/* Header: color dot, name, slug, stars, trust */}
+      {/* Header: icon/color dot, name, slug, stars, trust */}
       <div
         style={{
           display: "flex",
@@ -729,16 +730,30 @@ function AgentCard({
           gap: "10px",
         }}
       >
-        <span
-          style={{
-            display: "inline-block",
-            width: "10px",
-            height: "10px",
-            borderRadius: "3px",
-            background: colorIndicator,
-            flexShrink: 0,
-          }}
-        />
+        {agent.icon ? (
+          <img
+            src={agent.icon}
+            alt=""
+            style={{
+              width: "28px",
+              height: "28px",
+              borderRadius: "6px",
+              objectFit: "cover",
+              flexShrink: 0,
+            }}
+          />
+        ) : (
+          <span
+            style={{
+              display: "inline-block",
+              width: "10px",
+              height: "10px",
+              borderRadius: "3px",
+              background: colorIndicator,
+              flexShrink: 0,
+            }}
+          />
+        )}
         <div style={{ minWidth: 0, flex: 1 }}>
           <div
             style={{
@@ -825,6 +840,18 @@ function AgentDetail({
         <button type="button" style={buttonStyle} onClick={onBack}>
           Back
         </button>
+        {agent.icon ? (
+          <img
+            src={agent.icon}
+            alt=""
+            style={{
+              width: "36px",
+              height: "36px",
+              borderRadius: "8px",
+              objectFit: "cover",
+            }}
+          />
+        ) : null}
         <strong style={{ fontSize: "16px" }}>{agent.displayName}</strong>
         <Pill label={agent.slug} />
       </div>
