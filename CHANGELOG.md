@@ -1,0 +1,32 @@
+# Changelog
+
+## 0.0.3
+
+### Fixed
+
+- Register validate-config action handler (was called by settings UI but never registered)
+- Consolidate default API URL to single source via DEFAULT_CONFIG
+- Add SSRF hostname validation blocking private/internal addresses
+- Namespace stream channels to clawnet:* prefix (prevents collision with Tortuga plugin)
+- Add cursor-based pagination loop in sync (was single-page fetch)
+- Remove duplicate JOB_KEYS/ENTITY_TYPES constant aliases
+- Build constants.js separately for bundle:false manifest
+
+### Added
+
+- 43 tests covering all handlers, events, tools, lifecycle
+- Full ClawNet API client with typed responses
+- Marketplace UI (dashboard widget, page, sidebar, settings)
+- Worker with sync job, event handlers, data/action handlers, agent tools
+
+## 0.0.2
+
+### Fixed
+
+- Build constants.js separately so manifest can import it at runtime
+
+## 0.0.1
+
+### Added
+
+- Initial scaffold
