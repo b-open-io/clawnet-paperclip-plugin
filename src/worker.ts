@@ -317,9 +317,9 @@ function registerEventHandlers(ctx: PluginContext): void {
 function registerDataHandlers(ctx: PluginContext): void {
   // List synced ClawNet agent entities for the marketplace UI
   ctx.data.register(DATA_KEYS.clawnetAgents, async (params) => {
-    const { search, limit } = getListParams(params);
+    const { search, page, limit } = getListParams(params);
 
-    const entities = await ctx.entities.list({
+    let entities = await ctx.entities.list({
       entityType: ENTITY_TYPES.agent,
       limit,
       offset: 0,
@@ -328,7 +328,7 @@ function registerDataHandlers(ctx: PluginContext): void {
     // Client-side search filtering (entities.list does not support text search)
     if (search) {
       const term = search.toLowerCase();
-      return entities.filter((entity) => {
+      entities = entities.filter((entity) => {
         const titleMatch = entity.title?.toLowerCase().includes(term);
         const data = entity.data as Record<string, unknown>;
         const nameMatch = typeof data.name === "string" && data.name.toLowerCase().includes(term);
@@ -337,14 +337,32 @@ function registerDataHandlers(ctx: PluginContext): void {
       });
     }
 
-    return entities;
+    // Transform entities into the UI's expected ClawNetAgent shape
+    const agents = entities.map((entity) => {
+      const d = entity.data as Record<string, unknown>;
+      return {
+        id: entity.externalId ?? entity.id,
+        slug: (d.slug as string) ?? entity.externalId ?? "",
+        displayName: entity.title ?? (d.displayName as string) ?? (d.name as string) ?? "",
+        description: (d.description as string) ?? null,
+        model: (d.model as string) ?? null,
+        color: (d.color as string) ?? null,
+        starCount: (d.starCount as number) ?? 0,
+        trustScore: null, // Not yet available from ClawNet
+        attestations: [], // Not yet available from ClawNet
+        skills: Array.isArray(d.skills) ? d.skills : [],
+        createdAt: entity.createdAt,
+      };
+    });
+
+    return { agents, total: agents.length, page, limit };
   });
 
   // List synced ClawNet skill entities
   ctx.data.register(DATA_KEYS.clawnetSkills, async (params) => {
     const { search, limit } = getListParams(params);
 
-    const entities = await ctx.entities.list({
+    let entities = await ctx.entities.list({
       entityType: ENTITY_TYPES.skill,
       limit,
       offset: 0,
@@ -352,7 +370,7 @@ function registerDataHandlers(ctx: PluginContext): void {
 
     if (search) {
       const term = search.toLowerCase();
-      return entities.filter((entity) => {
+      entities = entities.filter((entity) => {
         const titleMatch = entity.title?.toLowerCase().includes(term);
         const data = entity.data as Record<string, unknown>;
         const nameMatch = typeof data.name === "string" && data.name.toLowerCase().includes(term);
@@ -361,7 +379,20 @@ function registerDataHandlers(ctx: PluginContext): void {
       });
     }
 
-    return entities;
+    // Transform entities into the UI's expected ClawNetSkill shape
+    const skills = entities.map((entity) => {
+      const d = entity.data as Record<string, unknown>;
+      return {
+        id: entity.externalId ?? entity.id,
+        slug: (d.slug as string) ?? entity.externalId ?? "",
+        displayName: entity.title ?? (d.displayName as string) ?? (d.name as string) ?? "",
+        description: (d.description as string) ?? null,
+        category: (d.category as string) ?? null,
+        starCount: (d.starCount as number) ?? 0,
+      };
+    });
+
+    return { skills, total: skills.length };
   });
 
   // Return last sync time, counts from ctx.state
@@ -408,6 +439,24 @@ function registerDataHandlers(ctx: PluginContext): void {
           ? clawnetEntities.find((e) => e.externalId === linkState.clawnetExternalId)
           : null;
 
+        let clawnetTemplate = null;
+        if (clawnetMatch) {
+          const d = clawnetMatch.data as Record<string, unknown>;
+          clawnetTemplate = {
+            id: clawnetMatch.externalId ?? clawnetMatch.id,
+            slug: (d.slug as string) ?? clawnetMatch.externalId ?? "",
+            displayName: clawnetMatch.title ?? (d.displayName as string) ?? (d.name as string) ?? "",
+            description: (d.description as string) ?? null,
+            model: (d.model as string) ?? null,
+            color: (d.color as string) ?? null,
+            starCount: (d.starCount as number) ?? 0,
+            trustScore: null,
+            attestations: [],
+            skills: Array.isArray(d.skills) ? d.skills : [],
+            createdAt: clawnetMatch.createdAt,
+          };
+        }
+
         return {
           paperclipAgent: {
             id: agent.id,
@@ -416,13 +465,7 @@ function registerDataHandlers(ctx: PluginContext): void {
             role: agent.role,
           },
           clawnetLink: linkState,
-          clawnetTemplate: clawnetMatch
-            ? {
-                externalId: clawnetMatch.externalId,
-                title: clawnetMatch.title,
-                data: clawnetMatch.data,
-              }
-            : null,
+          clawnetTemplate,
         };
       }),
     );

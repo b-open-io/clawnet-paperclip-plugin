@@ -244,32 +244,57 @@ describe("ClawNet data handlers", () => {
   });
 
   describe("clawnet-agents", () => {
-    it("returns all synced agent entities", async () => {
+    it("returns all synced agent entities in AgentListResponse shape", async () => {
       await seedClawNetAgent(harness, "alpha", "Alpha Agent");
       await seedClawNetAgent(harness, "beta", "Beta Agent");
 
-      const result = await harness.getData<any[]>(DATA_KEYS.clawnetAgents, {
+      const result = await harness.getData<{
+        agents: any[];
+        total: number;
+        page: number;
+        limit: number;
+      }>(DATA_KEYS.clawnetAgents, {
         companyId: "co-1",
         page: 1,
         limit: 25,
       });
 
-      expect(result).toHaveLength(2);
+      expect(result.agents).toHaveLength(2);
+      expect(result.total).toBe(2);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(25);
+
+      // Verify flat ClawNetAgent shape
+      const agent = result.agents[0];
+      expect(agent.id).toBeDefined();
+      expect(agent.slug).toBeDefined();
+      expect(agent.displayName).toBeDefined();
+      expect(agent.description).toBeDefined();
+      expect(agent).toHaveProperty("model");
+      expect(agent).toHaveProperty("color");
+      expect(agent).toHaveProperty("starCount");
+      expect(agent).toHaveProperty("trustScore");
+      expect(agent).toHaveProperty("attestations");
+      expect(agent).toHaveProperty("skills");
+      expect(agent).toHaveProperty("createdAt");
     });
 
     it("filters agents by search term", async () => {
       await seedClawNetAgent(harness, "alpha", "Alpha Agent");
       await seedClawNetAgent(harness, "beta", "Beta Agent");
 
-      const result = await harness.getData<any[]>(DATA_KEYS.clawnetAgents, {
+      const result = await harness.getData<{
+        agents: any[];
+        total: number;
+      }>(DATA_KEYS.clawnetAgents, {
         companyId: "co-1",
         search: "alpha",
         page: 1,
         limit: 25,
       });
 
-      expect(result).toHaveLength(1);
-      expect(result[0].title).toBe("Alpha Agent");
+      expect(result.agents).toHaveLength(1);
+      expect(result.agents[0].displayName).toBe("Alpha Agent");
     });
 
     it("throws when companyId is missing", async () => {
@@ -280,32 +305,48 @@ describe("ClawNet data handlers", () => {
   });
 
   describe("clawnet-skills", () => {
-    it("returns all synced skill entities", async () => {
+    it("returns all synced skill entities in SkillListResponse shape", async () => {
       await seedClawNetSkill(harness, "code-review", "Code Review");
       await seedClawNetSkill(harness, "deploy", "Deploy");
 
-      const result = await harness.getData<any[]>(DATA_KEYS.clawnetSkills, {
+      const result = await harness.getData<{
+        skills: any[];
+        total: number;
+      }>(DATA_KEYS.clawnetSkills, {
         companyId: "co-1",
         page: 1,
         limit: 25,
       });
 
-      expect(result).toHaveLength(2);
+      expect(result.skills).toHaveLength(2);
+      expect(result.total).toBe(2);
+
+      // Verify flat ClawNetSkill shape
+      const skill = result.skills[0];
+      expect(skill.id).toBeDefined();
+      expect(skill.slug).toBeDefined();
+      expect(skill.displayName).toBeDefined();
+      expect(skill).toHaveProperty("description");
+      expect(skill).toHaveProperty("category");
+      expect(skill).toHaveProperty("starCount");
     });
 
     it("filters skills by search term", async () => {
       await seedClawNetSkill(harness, "code-review", "Code Review");
       await seedClawNetSkill(harness, "deploy", "Deploy");
 
-      const result = await harness.getData<any[]>(DATA_KEYS.clawnetSkills, {
+      const result = await harness.getData<{
+        skills: any[];
+        total: number;
+      }>(DATA_KEYS.clawnetSkills, {
         companyId: "co-1",
         search: "deploy",
         page: 1,
         limit: 25,
       });
 
-      expect(result).toHaveLength(1);
-      expect(result[0].title).toBe("Deploy");
+      expect(result.skills).toHaveLength(1);
+      expect(result.skills[0].displayName).toBe("Deploy");
     });
 
     it("throws when companyId is missing", async () => {
@@ -432,7 +473,9 @@ describe("ClawNet data handlers", () => {
       expect(result.linkedCount).toBe(1);
       expect(result.fleet[0].clawnetLink).toBeDefined();
       expect(result.fleet[0].clawnetTemplate).toBeDefined();
-      expect(result.fleet[0].clawnetTemplate.externalId).toBe("scout-bot");
+      expect(result.fleet[0].clawnetTemplate.id).toBe("scout-bot");
+      expect(result.fleet[0].clawnetTemplate.slug).toBe("scout-bot");
+      expect(result.fleet[0].clawnetTemplate.displayName).toBe("ScoutBot");
     });
 
     it("throws when companyId is missing", async () => {
