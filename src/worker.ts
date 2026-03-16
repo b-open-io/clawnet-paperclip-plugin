@@ -11,6 +11,7 @@ import {
 import type { PluginHealthDiagnostics, PluginConfigValidationResult } from "@paperclipai/plugin-sdk";
 import { createClawNetClient } from "./clawnet-api.js";
 import {
+  DEFAULT_CONFIG,
   JOB_KEYS,
   TOOL_NAMES,
   STREAM_CHANNELS,
@@ -99,7 +100,7 @@ async function performSync(ctx: PluginContext, streamProgress: boolean): Promise
   const config = await getConfig(ctx);
   const apiKey = await resolveApiKey(ctx, config);
   const client = createClawNetClient({
-    baseUrl: config.clawnetApiUrl || "https://api.clawnet.bopen.io",
+    baseUrl: config.clawnetApiUrl || DEFAULT_CONFIG.clawnetApiUrl,
     apiKey,
     fetchFn: ctx.http.fetch.bind(ctx.http),
   });
@@ -120,20 +121,23 @@ async function performSync(ctx: PluginContext, streamProgress: boolean): Promise
     });
   }
 
-  const agentResponse = await client.listAgents();
   let agentCount = 0;
-
-  for (const agent of agentResponse.agents) {
-    await ctx.entities.upsert({
-      entityType: ENTITY_TYPES.clawnetAgent,
-      scopeKind: "instance",
-      externalId: agent.slug || agent._id,
-      title: agent.displayName || agent.name,
-      status: agent.deleted ? "deleted" : "active",
-      data: agent as unknown as Record<string, unknown>,
-    });
-    agentCount++;
-  }
+  let agentCursor: string | undefined;
+  do {
+    const agentResponse = await client.listAgents({ cursor: agentCursor });
+    for (const agent of agentResponse.agents) {
+      await ctx.entities.upsert({
+        entityType: ENTITY_TYPES.agent,
+        scopeKind: "instance",
+        externalId: agent.slug || agent._id,
+        title: agent.displayName || agent.name,
+        status: agent.deleted ? "deleted" : "active",
+        data: agent as unknown as Record<string, unknown>,
+      });
+      agentCount++;
+    }
+    agentCursor = agentResponse.hasMore ? agentResponse.cursor : undefined;
+  } while (agentCursor);
 
   if (streamProgress) {
     ctx.streams.emit(STREAM_CHANNELS.syncProgress, {
@@ -153,20 +157,23 @@ async function performSync(ctx: PluginContext, streamProgress: boolean): Promise
     });
   }
 
-  const skillResponse = await client.listSkills();
   let skillCount = 0;
-
-  for (const skill of skillResponse.skills) {
-    await ctx.entities.upsert({
-      entityType: ENTITY_TYPES.clawnetSkill,
-      scopeKind: "instance",
-      externalId: skill.slug || skill._id,
-      title: skill.name,
-      status: "available",
-      data: skill as unknown as Record<string, unknown>,
-    });
-    skillCount++;
-  }
+  let skillCursor: string | undefined;
+  do {
+    const skillResponse = await client.listSkills({ cursor: skillCursor });
+    for (const skill of skillResponse.skills) {
+      await ctx.entities.upsert({
+        entityType: ENTITY_TYPES.skill,
+        scopeKind: "instance",
+        externalId: skill.slug || skill._id,
+        title: skill.name,
+        status: "available",
+        data: skill as unknown as Record<string, unknown>,
+      });
+      skillCount++;
+    }
+    skillCursor = skillResponse.hasMore ? skillResponse.cursor : undefined;
+  } while (skillCursor);
 
   if (streamProgress) {
     ctx.streams.emit(STREAM_CHANNELS.syncProgress, {
@@ -212,7 +219,7 @@ async function performSync(ctx: PluginContext, streamProgress: boolean): Promise
 // ---------------------------------------------------------------------------
 
 function registerJobHandlers(ctx: PluginContext): void {
-  ctx.jobs.register(JOB_KEYS.clawnetSync, async (job: PluginJobContext) => {
+  ctx.jobs.register(JOB_KEYS.sync, async (job: PluginJobContext) => {
     ctx.logger.info("Starting scheduled ClawNet sync", {
       runId: job.runId,
       trigger: job.trigger,
@@ -270,7 +277,7 @@ function registerEventHandlers(ctx: PluginContext): void {
     if (!agent) return;
 
     const clawnetAgents = await ctx.entities.list({
-      entityType: ENTITY_TYPES.clawnetAgent,
+      entityType: ENTITY_TYPES.agent,
       limit: 200,
     });
 
@@ -313,7 +320,7 @@ function registerDataHandlers(ctx: PluginContext): void {
     const { search, limit } = getListParams(params);
 
     const entities = await ctx.entities.list({
-      entityType: ENTITY_TYPES.clawnetAgent,
+      entityType: ENTITY_TYPES.agent,
       limit,
       offset: 0,
     });
@@ -338,7 +345,7 @@ function registerDataHandlers(ctx: PluginContext): void {
     const { search, limit } = getListParams(params);
 
     const entities = await ctx.entities.list({
-      entityType: ENTITY_TYPES.clawnetSkill,
+      entityType: ENTITY_TYPES.skill,
       limit,
       offset: 0,
     });
@@ -378,7 +385,7 @@ function registerDataHandlers(ctx: PluginContext): void {
     const [paperclipAgents, clawnetEntities] = await Promise.all([
       ctx.agents.list({ companyId, limit: 200, offset: 0 }),
       ctx.entities.list({
-        entityType: ENTITY_TYPES.clawnetAgent,
+        entityType: ENTITY_TYPES.agent,
         limit: 200,
         offset: 0,
       }),
@@ -474,7 +481,7 @@ function registerActionHandlers(ctx: PluginContext): void {
 
     // Verify the ClawNet entity exists
     const clawnetEntities = await ctx.entities.list({
-      entityType: ENTITY_TYPES.clawnetAgent,
+      entityType: ENTITY_TYPES.agent,
       externalId: clawnetExternalId,
       limit: 1,
     });
@@ -510,6 +517,32 @@ function registerActionHandlers(ctx: PluginContext): void {
       templateTitle: clawnetEntities[0]!.title,
     };
   });
+
+  // Validate plugin configuration (API URL format, API key resolution)
+  ctx.actions.register(ACTION_KEYS.validateConfig, async (_params) => {
+    const config = await getConfig(ctx);
+    const errors: string[] = [];
+
+    if (config.clawnetApiUrl) {
+      try {
+        new URL(config.clawnetApiUrl);
+      } catch {
+        errors.push("Invalid API URL");
+      }
+    }
+
+    if (config.clawnetApiKey) {
+      try {
+        await ctx.secrets.resolve(config.clawnetApiKey);
+      } catch (e) {
+        errors.push("API key resolution failed: " + summarizeError(e));
+      }
+    } else {
+      errors.push("No API key configured");
+    }
+
+    return { ok: errors.length === 0, errors };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -543,7 +576,7 @@ function registerToolHandlers(ctx: PluginContext): void {
 
       // Try exact match on externalId first
       const entities = await ctx.entities.list({
-        entityType: ENTITY_TYPES.clawnetAgent,
+        entityType: ENTITY_TYPES.agent,
         externalId: slug,
         limit: 1,
       });
@@ -558,7 +591,7 @@ function registerToolHandlers(ctx: PluginContext): void {
 
       // Fallback: fuzzy search by title/name/slug
       const allAgents = await ctx.entities.list({
-        entityType: ENTITY_TYPES.clawnetAgent,
+        entityType: ENTITY_TYPES.agent,
         limit: 200,
       });
 
@@ -614,7 +647,7 @@ function registerToolHandlers(ctx: PluginContext): void {
 
       const resultLimit = Math.min(maxResults ?? 10, 50);
       const allSkills = await ctx.entities.list({
-        entityType: ENTITY_TYPES.clawnetSkill,
+        entityType: ENTITY_TYPES.skill,
         limit: 200,
       });
 
@@ -663,8 +696,8 @@ function registerToolHandlers(ctx: PluginContext): void {
     },
     async (_params, runCtx: ToolRunContext): Promise<ToolResult> => {
       const [agents, skills, cursor, paperclipAgents] = await Promise.all([
-        ctx.entities.list({ entityType: ENTITY_TYPES.clawnetAgent, limit: 200 }),
-        ctx.entities.list({ entityType: ENTITY_TYPES.clawnetSkill, limit: 200 }),
+        ctx.entities.list({ entityType: ENTITY_TYPES.agent, limit: 200 }),
+        ctx.entities.list({ entityType: ENTITY_TYPES.skill, limit: 200 }),
         getSyncCursor(ctx),
         ctx.agents.list({ companyId: runCtx.companyId, limit: 200, offset: 0 }),
       ]);
@@ -782,6 +815,21 @@ const plugin: PaperclipPlugin = definePlugin({
           if (url.protocol !== "https:" && url.protocol !== "http:") {
             errors.push("clawnetApiUrl must use http or https protocol");
           }
+
+          // SSRF: reject private/internal hostnames
+          const hostname = url.hostname;
+          if (
+            hostname === "localhost" ||
+            hostname.startsWith("127.") ||
+            hostname.startsWith("10.") ||
+            hostname.startsWith("192.168.") ||
+            hostname.startsWith("169.254.") ||
+            /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+            hostname.endsWith(".internal") ||
+            hostname.endsWith(".local")
+          ) {
+            errors.push("clawnetApiUrl must not point to a private or internal address");
+          }
         } catch {
           errors.push("clawnetApiUrl is not a valid URL");
         }
@@ -810,7 +858,7 @@ const plugin: PaperclipPlugin = definePlugin({
     }
 
     if (!typed.clawnetApiUrl) {
-      warnings.push("clawnetApiUrl not set; will default to https://api.clawnet.bopen.io");
+      warnings.push(`clawnetApiUrl not set; will default to ${DEFAULT_CONFIG.clawnetApiUrl}`);
     }
 
     return {

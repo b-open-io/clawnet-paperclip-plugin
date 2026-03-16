@@ -375,7 +375,8 @@ export function ClawNetFleetWidget({ context }: PluginWidgetProps) {
     syncParams,
   );
 
-  const fleetStream = usePluginStream<FleetStatusEvent>("fleet-status", {
+  const fleetStream = // TODO(M4): import STREAM_CHANNELS from constants once UI bundle resolution is verified
+  usePluginStream<FleetStatusEvent>("clawnet:fleet-status", {
     companyId: companyId ?? undefined,
   });
 
@@ -845,7 +846,8 @@ function SyncProgressBar({
 }: {
   companyId: string | null;
 }) {
-  const syncProgress = usePluginStream<SyncProgressEvent>("sync-progress", {
+  const syncProgress = // TODO(M4): import STREAM_CHANNELS from constants once UI bundle resolution is verified
+  usePluginStream<SyncProgressEvent>("clawnet:sync-progress", {
     companyId: companyId ?? undefined,
   });
 

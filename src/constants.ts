@@ -37,7 +37,6 @@ export const EXPORT_NAMES = {
 
 export const JOB_KEYS = {
   sync: "clawnet-sync",
-  clawnetSync: "clawnet-sync",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -55,8 +54,8 @@ export const TOOL_NAMES = {
 // ---------------------------------------------------------------------------
 
 export const STREAM_CHANNELS = {
-  fleetStatus: "fleet-status",
-  syncProgress: "sync-progress",
+  fleetStatus: "clawnet:fleet-status",
+  syncProgress: "clawnet:sync-progress",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -66,8 +65,6 @@ export const STREAM_CHANNELS = {
 export const ENTITY_TYPES = {
   agent: "clawnet-agent",
   skill: "clawnet-skill",
-  clawnetAgent: "clawnet-agent",
-  clawnetSkill: "clawnet-skill",
 } as const;
 
 // ---------------------------------------------------------------------------

@@ -43,7 +43,7 @@ async function seedClawNetAgent(
 ): Promise<void> {
   // We go through ctx.entities.upsert since that's the same path the sync uses
   await harness.ctx.entities.upsert({
-    entityType: ENTITY_TYPES.clawnetAgent,
+    entityType: ENTITY_TYPES.agent,
     scopeKind: "instance",
     externalId: slug,
     title: name,
@@ -59,7 +59,7 @@ async function seedClawNetSkill(
   extra?: Record<string, unknown>,
 ): Promise<void> {
   await harness.ctx.entities.upsert({
-    entityType: ENTITY_TYPES.clawnetSkill,
+    entityType: ENTITY_TYPES.skill,
     scopeKind: "instance",
     externalId: slug,
     title: name,
@@ -103,7 +103,7 @@ describe("ClawNet sync job", () => {
     // network — we only assert registration, not execution outcome.
     let threwNoHandler = false;
     try {
-      await harness.runJob(JOB_KEYS.clawnetSync);
+      await harness.runJob(JOB_KEYS.sync);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       if (msg.includes("No job handler registered")) {
@@ -885,7 +885,7 @@ describe("ClawNet config validation", () => {
 
     expect(result.ok).toBe(true);
     expect(result.warnings).toContain(
-      "clawnetApiUrl not set; will default to https://api.clawnet.bopen.io",
+      "clawnetApiUrl not set; will default to https://clawnet.sh",
     );
   });
 
