@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.4
+
+### Fixed
+
+- Transform entity data to match UI types (agents, skills, fleet summary now return correctly shaped objects)
+
 ## 0.0.3
 
 ### Fixed
