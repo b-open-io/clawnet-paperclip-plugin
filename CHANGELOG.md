@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.10
+
+### Added
+- Agent icon display in marketplace cards and detail view (falls back to color dot)
+- Hire Agent copies a CEO-ready prompt to clipboard for agent creation
+
+### Changed
+- Removed API key requirement from settings (not needed for public read-only sync)
+- API key validation downgraded from error to warning
+
 ## 0.0.4
 
 ### Fixed
