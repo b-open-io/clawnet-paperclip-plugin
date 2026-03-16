@@ -87,9 +87,7 @@ function getListParams(params: Record<string, unknown>) {
   const page = typeof params.page === "number" ? params.page : 1;
   const limit = typeof params.limit === "number" ? Math.min(params.limit, 100) : 25;
   const companyId = typeof params.companyId === "string" ? params.companyId : "";
-  if (!companyId) {
-    throw new Error("companyId is required");
-  }
+  // companyId is optional for entity listing (entities are instance-scoped)
   return { companyId, search, page, limit };
 }
 
