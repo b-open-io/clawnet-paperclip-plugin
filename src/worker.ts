@@ -60,9 +60,9 @@ async function getConfig(ctx: PluginContext): Promise<ClawNetConfig> {
   return raw as ClawNetConfig;
 }
 
-async function resolveApiKey(ctx: PluginContext, config: ClawNetConfig): Promise<string> {
+async function resolveApiKey(ctx: PluginContext, config: ClawNetConfig): Promise<string | undefined> {
   if (!config.clawnetApiKey) {
-    throw new Error("ClawNet API key is not configured");
+    return undefined; // API key is optional for read-only operations (listing/syncing)
   }
   return await ctx.secrets.resolve(config.clawnetApiKey);
 }
