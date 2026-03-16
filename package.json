@@ -1,6 +1,6 @@
 {
   "name": "@bopen-io/clawnet-plugin",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "module",
   "private": false,
   "description": "Agent marketplace bridge: browse, search, and hire agents from the ClawNet registry with trust-gated attestations",
