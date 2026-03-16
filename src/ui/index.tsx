@@ -1130,36 +1130,40 @@ export function ClawNetMarketplacePage({ context }: PluginPageProps) {
   }
 
   function handleHireAgent(agent: ClawNetAgent) {
-    // Navigate to agent creation form
-    const createUrl = hostPath(
-      context.companyPrefix,
-      "/agents/new?adapterType=claude_local"
-    );
-
-    // Build agent details for the persistent toast
-    const details = [
-      `Name: ${agent.displayName}`,
-      agent.model ? `Model: ${agent.model}` : null,
-      agent.description
-        ? `Role: ${agent.description.length > 100 ? `${agent.description.slice(0, 100)}...` : agent.description}`
-        : null,
+    // Build a prompt for the CEO agent to hire this agent
+    const lines = [
+      `Hire a new agent from ClawNet:`,
+      ``,
+      `- Name: ${agent.displayName}`,
+      `- Slug: ${agent.slug}`,
+      agent.model ? `- Model: ${agent.model}` : null,
+      agent.color ? `- Color: ${agent.color}` : null,
+      agent.description ? `- Role: ${agent.description}` : null,
       agent.skills.length > 0
-        ? `Skills: ${agent.skills.slice(0, 5).join(", ")}${agent.skills.length > 5 ? ` (+${agent.skills.length - 5} more)` : ""}`
+        ? `- Skills: ${agent.skills.join(", ")}`
         : null,
     ]
       .filter(Boolean)
       .join("\n");
 
-    toast({
-      title: `Hiring: ${agent.displayName}`,
-      body: details,
-      tone: "info",
-      ttlMs: 30000,
-      action: {
-        label: "Create Agent",
-        href: createUrl,
+    navigator.clipboard.writeText(lines).then(
+      () => {
+        toast({
+          title: `Copied: ${agent.displayName}`,
+          body: "Hiring prompt copied to clipboard. Paste it to the CEO agent to create this agent.",
+          tone: "success",
+          ttlMs: 5000,
+        });
       },
-    });
+      () => {
+        toast({
+          title: `Hire: ${agent.displayName}`,
+          body: lines,
+          tone: "info",
+          ttlMs: 30000,
+        });
+      }
+    );
   }
 
   // Agent detail view
