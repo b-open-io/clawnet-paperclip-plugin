@@ -48,6 +48,7 @@ export const TOOL_NAMES = {
   agentLookup: "agent-lookup",
   skillSearch: "skill-search",
   fleetOverview: "fleet-overview",
+  hireClawnetAgent: "hire-clawnet-agent",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -87,6 +88,7 @@ export const ACTION_KEYS = {
   triggerSync: "trigger-sync",
   linkAgent: "link-agent",
   validateConfig: "validate-config",
+  hireAgent: "hire-agent",
 } as const;
 
 // ---------------------------------------------------------------------------

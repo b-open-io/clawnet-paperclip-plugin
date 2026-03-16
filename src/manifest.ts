@@ -8,6 +8,7 @@ import {
   PLUGIN_VERSION,
   SLOT_IDS,
   TOOL_NAMES,
+  ACTION_KEYS,
 } from "./constants.js";
 
 const manifest: PaperclipPluginManifestV1 = {
@@ -21,6 +22,8 @@ const manifest: PaperclipPluginManifestV1 = {
   categories: ["connector"],
   capabilities: [
     "agents.read",
+    "agents.invoke",
+    "issues.create",
     "plugin.state.read",
     "plugin.state.write",
     "events.subscribe",
@@ -106,6 +109,22 @@ const manifest: PaperclipPluginManifestV1 = {
       parametersSchema: {
         type: "object",
         properties: {},
+      },
+    },
+    {
+      name: TOOL_NAMES.hireClawnetAgent,
+      displayName: "Hire ClawNet Agent",
+      description:
+        "Hire an agent from the ClawNet registry into this Paperclip company. Looks up the agent by slug and invokes the hiring flow.",
+      parametersSchema: {
+        type: "object",
+        properties: {
+          slug: {
+            type: "string",
+            description: "ClawNet agent slug to hire.",
+          },
+        },
+        required: ["slug"],
       },
     },
   ],

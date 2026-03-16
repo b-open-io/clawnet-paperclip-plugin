@@ -1129,41 +1129,50 @@ export function ClawNetMarketplacePage({ context }: PluginPageProps) {
     }
   }
 
-  function handleHireAgent(agent: ClawNetAgent) {
-    // Build a prompt for the CEO agent to hire this agent
-    const lines = [
-      `Hire a new agent from ClawNet:`,
-      ``,
-      `- Name: ${agent.displayName}`,
-      `- Slug: ${agent.slug}`,
-      agent.model ? `- Model: ${agent.model}` : null,
-      agent.color ? `- Color: ${agent.color}` : null,
-      agent.description ? `- Role: ${agent.description}` : null,
-      agent.skills.length > 0
-        ? `- Skills: ${agent.skills.join(", ")}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join("\n");
+  const hireAgent = usePluginAction("hire-agent");
+  const [hiring, setHiring] = useState<string | null>(null);
 
-    navigator.clipboard.writeText(lines).then(
-      () => {
+  function handleHireAgent(agent: ClawNetAgent) {
+    if (!companyId || hiring) return;
+
+    setHiring(agent.slug);
+    hireAgent({
+      companyId,
+      slug: agent.slug,
+      displayName: agent.displayName,
+      model: agent.model,
+      color: agent.color,
+      description: agent.description,
+      skills: agent.skills,
+    })
+      .then((raw) => {
+        const result = raw as { method: string; agentName?: string };
+        if (result.method === "invoke") {
+          toast({
+            title: `Hiring: ${agent.displayName}`,
+            body: `CEO is creating this agent now.`,
+            tone: "success",
+            ttlMs: 5000,
+          });
+        } else {
+          toast({
+            title: `Hire request created`,
+            body: `Issue created for ${agent.displayName}. Assign it to an agent with hiring permissions.`,
+            tone: "info",
+            ttlMs: 8000,
+          });
+        }
+      })
+      .catch((err) => {
         toast({
-          title: `Copied: ${agent.displayName}`,
-          body: "Hiring prompt copied to clipboard. Paste it to the CEO agent to create this agent.",
-          tone: "success",
-          ttlMs: 5000,
+          title: "Hire failed",
+          body: err instanceof Error ? err.message : String(err),
+          tone: "error",
         });
-      },
-      () => {
-        toast({
-          title: `Hire: ${agent.displayName}`,
-          body: lines,
-          tone: "info",
-          ttlMs: 30000,
-        });
-      }
-    );
+      })
+      .finally(() => {
+        setHiring(null);
+      });
   }
 
   // Agent detail view

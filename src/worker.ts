@@ -9,7 +9,7 @@ import {
   type ToolRunContext,
   type Agent,
 } from "@paperclipai/plugin-sdk";
-import type { PluginHealthDiagnostics, PluginConfigValidationResult } from "@paperclipai/plugin-sdk";
+import type { PluginHealthDiagnostics, PluginConfigValidationResult, PluginEntityRecord } from "@paperclipai/plugin-sdk";
 import { createClawNetClient } from "./clawnet-api.js";
 import {
   DEFAULT_CONFIG,
@@ -562,6 +562,83 @@ function registerActionHandlers(ctx: PluginContext): void {
     };
   });
 
+  // Hire a ClawNet agent by invoking the CEO directly (or creating an issue)
+  ctx.actions.register(ACTION_KEYS.hireAgent, async (params) => {
+    const companyId = typeof params.companyId === "string" ? params.companyId : "";
+    const slug = typeof params.slug === "string" ? params.slug : "";
+    const displayName = typeof params.displayName === "string" ? params.displayName : "";
+    const model = typeof params.model === "string" ? params.model : null;
+    const color = typeof params.color === "string" ? params.color : null;
+    const description = typeof params.description === "string" ? params.description : null;
+    const skills = Array.isArray(params.skills) ? (params.skills as string[]) : [];
+
+    if (!companyId || !slug || !displayName) {
+      throw new Error("companyId, slug, and displayName are required");
+    }
+
+    // Build the hire prompt
+    const promptLines = [
+      `Hire a new agent from the ClawNet registry:`,
+      `- Name: ${displayName}`,
+      `- Slug: ${slug}`,
+      model ? `- Model: ${model}` : null,
+      color ? `- Color: ${color}` : null,
+      description ? `- Role: ${description}` : null,
+      `- Adapter: claude_local`,
+      skills.length > 0 ? `- Skills: ${skills.join(", ")}` : null,
+      ``,
+      `Use POST /api/companies/${companyId}/agent-hires to create this agent with role "general" and adapterType "claude_local".`,
+    ]
+      .filter((line): line is string => line !== null)
+      .join("\n");
+
+    // Find the CEO agent
+    const agents = await ctx.agents.list({ companyId, limit: 200, offset: 0 });
+    const ceo = agents.find((a) => a.role === "ceo");
+
+    if (ceo) {
+      const result = await ctx.agents.invoke(ceo.id, companyId, {
+        prompt: promptLines,
+        reason: `Hire agent: ${displayName} (${slug})`,
+      });
+
+      ctx.logger.info("Invoked CEO to hire agent", {
+        ceoId: ceo.id,
+        ceoName: ceo.name,
+        runId: result.runId,
+        slug,
+        displayName,
+      });
+
+      return {
+        ok: true,
+        method: "invoke" as const,
+        runId: result.runId,
+        agentName: ceo.name,
+      };
+    }
+
+    // Fallback: create an issue if no CEO agent found
+    const issue = await ctx.issues.create({
+      companyId,
+      title: `Hire agent: ${displayName} (${slug})`,
+      description: promptLines,
+      priority: "medium",
+    });
+
+    ctx.logger.warn("No CEO agent found, created hire issue instead", {
+      issueId: issue.id,
+      slug,
+      displayName,
+    });
+
+    return {
+      ok: true,
+      method: "issue" as const,
+      issueId: issue.id,
+    };
+  });
+
   // Validate plugin configuration (API URL format, API key resolution)
   ctx.actions.register(ACTION_KEYS.validateConfig, async (_params) => {
     const config = await getConfig(ctx);
@@ -767,6 +844,81 @@ function registerToolHandlers(ctx: PluginContext): void {
           `Status breakdown: ${Object.entries(statusCounts).map(([k, v]) => `${k}=${v}`).join(", ") || "none"}`,
         ].join(" "),
         data: summary,
+      };
+    },
+  );
+
+  // Tool: hire a ClawNet agent (for CEO or agents with hiring permissions)
+  ctx.tools.register(
+    TOOL_NAMES.hireClawnetAgent,
+    {
+      displayName: "Hire ClawNet Agent",
+      description:
+        "Hire an agent from the ClawNet registry into this Paperclip company. Looks up the agent by slug and returns the hire payload for the agent-hires API.",
+      parametersSchema: {
+        type: "object",
+        properties: {
+          slug: {
+            type: "string",
+            description: "The ClawNet agent slug to hire",
+          },
+        },
+        required: ["slug"],
+      },
+    },
+    async (params, runCtx: ToolRunContext): Promise<ToolResult> => {
+      const { slug } = params as { slug?: string };
+      if (!slug) {
+        return { error: "slug is required" };
+      }
+
+      // Look up the ClawNet agent entity
+      const entities = await ctx.entities.list({
+        entityType: ENTITY_TYPES.agent,
+        externalId: slug,
+        limit: 1,
+      });
+
+      let entity: PluginEntityRecord | undefined = entities[0];
+      if (!entity) {
+        // Fuzzy search fallback
+        const allAgents = await ctx.entities.list({
+          entityType: ENTITY_TYPES.agent,
+          limit: 200,
+        });
+        const term = slug.toLowerCase();
+        entity = allAgents.find((e) => {
+          const d = e.data as Record<string, unknown>;
+          return (
+            e.title?.toLowerCase().includes(term) ||
+            (typeof d.slug === "string" && d.slug.toLowerCase().includes(term)) ||
+            (typeof d.name === "string" && d.name.toLowerCase().includes(term))
+          );
+        });
+      }
+
+      if (!entity) {
+        return {
+          error: `No ClawNet agent found matching "${slug}". Run a sync to ensure the registry is up to date.`,
+        };
+      }
+
+      const d = entity.data as Record<string, unknown>;
+      const hirePayload = {
+        name: entity.title ?? (d.displayName as string) ?? (d.name as string) ?? slug,
+        slug: (d.slug as string) ?? entity.externalId ?? slug,
+        model: (d.model as string) ?? null,
+        color: (d.color as string) ?? null,
+        description: (d.description as string) ?? null,
+        skills: Array.isArray(d.skills) ? d.skills : [],
+        role: "general",
+        adapterType: "claude_local",
+        companyId: runCtx.companyId,
+      };
+
+      return {
+        content: `Found ClawNet agent "${hirePayload.name}" (${hirePayload.slug}). Use POST /api/companies/${runCtx.companyId}/agent-hires with this payload to hire them.`,
+        data: hirePayload,
       };
     },
   );
