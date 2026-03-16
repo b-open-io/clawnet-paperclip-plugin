@@ -127,6 +127,26 @@ const manifest: PaperclipPluginManifestV1 = {
         required: ["slug"],
       },
     },
+    {
+      name: TOOL_NAMES.linkAgent,
+      displayName: "Link Agent to ClawNet Template",
+      description:
+        "Link an existing Paperclip agent to a ClawNet registry template by agent ID and ClawNet slug.",
+      parametersSchema: {
+        type: "object",
+        properties: {
+          agentId: {
+            type: "string",
+            description: "Paperclip agent UUID to link.",
+          },
+          clawnetSlug: {
+            type: "string",
+            description: "ClawNet agent slug to link to.",
+          },
+        },
+        required: ["agentId", "clawnetSlug"],
+      },
+    },
   ],
   ui: {
     slots: [

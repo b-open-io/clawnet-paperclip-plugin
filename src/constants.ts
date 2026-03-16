@@ -49,6 +49,7 @@ export const TOOL_NAMES = {
   skillSearch: "skill-search",
   fleetOverview: "fleet-overview",
   hireClawnetAgent: "hire-clawnet-agent",
+  linkAgent: "link-clawnet-agent",
 } as const;
 
 // ---------------------------------------------------------------------------

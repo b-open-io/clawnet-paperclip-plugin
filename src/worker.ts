@@ -922,6 +922,91 @@ function registerToolHandlers(ctx: PluginContext): void {
       };
     },
   );
+
+  // Tool: link a Paperclip agent to a ClawNet template
+  ctx.tools.register(
+    TOOL_NAMES.linkAgent,
+    {
+      displayName: "Link Agent to ClawNet Template",
+      description:
+        "Link an existing Paperclip agent to a ClawNet registry template so the fleet overview tracks the relationship.",
+      parametersSchema: {
+        type: "object",
+        properties: {
+          agentId: {
+            type: "string",
+            description: "The Paperclip agent UUID to link",
+          },
+          clawnetSlug: {
+            type: "string",
+            description: "The ClawNet agent slug to link to",
+          },
+        },
+        required: ["agentId", "clawnetSlug"],
+      },
+    },
+    async (params, runCtx: ToolRunContext): Promise<ToolResult> => {
+      const { agentId, clawnetSlug } = params as { agentId?: string; clawnetSlug?: string };
+      if (!agentId || !clawnetSlug) {
+        return { error: "agentId and clawnetSlug are required" };
+      }
+
+      // Verify the Paperclip agent exists
+      const agent = await ctx.agents.get(agentId, runCtx.companyId);
+      if (!agent) {
+        return { error: `Agent ${agentId} not found` };
+      }
+
+      // Resolve the ClawNet slug to an entity
+      let clawnetEntity: PluginEntityRecord | undefined;
+      const exact = await ctx.entities.list({
+        entityType: ENTITY_TYPES.agent,
+        externalId: clawnetSlug,
+        limit: 1,
+      });
+      clawnetEntity = exact[0];
+
+      if (!clawnetEntity) {
+        const all = await ctx.entities.list({ entityType: ENTITY_TYPES.agent, limit: 200 });
+        const term = clawnetSlug.toLowerCase();
+        clawnetEntity = all.find((e) => {
+          const d = e.data as Record<string, unknown>;
+          return (
+            (typeof d.slug === "string" && d.slug.toLowerCase() === term) ||
+            e.title?.toLowerCase() === term
+          );
+        });
+      }
+
+      if (!clawnetEntity) {
+        return { error: `ClawNet agent "${clawnetSlug}" not found in synced entities. Run a sync first.` };
+      }
+
+      // Persist the link
+      await ctx.state.set(
+        {
+          scopeKind: "agent",
+          scopeId: agentId,
+          stateKey: STATE_KEYS.clawnetLink,
+        },
+        {
+          clawnetExternalId: clawnetEntity.externalId,
+          linkedAt: new Date().toISOString(),
+          autoLinked: false,
+        },
+      );
+
+      return {
+        content: `Linked Paperclip agent "${agent.name}" to ClawNet template "${clawnetEntity.title}" (${clawnetEntity.externalId}).`,
+        data: {
+          agentId,
+          agentName: agent.name,
+          clawnetExternalId: clawnetEntity.externalId,
+          templateTitle: clawnetEntity.title,
+        },
+      };
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
