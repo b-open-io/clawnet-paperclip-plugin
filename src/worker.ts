@@ -93,6 +93,77 @@ function getListParams(params: Record<string, unknown>) {
 }
 
 // ---------------------------------------------------------------------------
+// Skill distribution
+// ---------------------------------------------------------------------------
+
+async function distributeClawNetSkills(
+  ctx: PluginContext,
+  agentId: string,
+  companyId: string,
+): Promise<void> {
+  // Read clawnet-link state — if agent is not linked, nothing to distribute
+  const linkState = (await ctx.state.get({
+    scopeKind: "agent",
+    scopeId: agentId,
+    stateKey: STATE_KEYS.clawnetLink,
+  })) as { clawnetExternalId: string } | null;
+
+  if (!linkState) return;
+
+  // Idempotent guard — skip if skills were already distributed
+  const alreadyDistributed = await ctx.state.get({
+    scopeKind: "agent",
+    scopeId: agentId,
+    stateKey: STATE_KEYS.skillsDistributed,
+  });
+
+  if (alreadyDistributed) return;
+
+  // Look up the ClawNet template entity to extract skills
+  const templateEntities = await ctx.entities.list({
+    entityType: ENTITY_TYPES.agent,
+    externalId: linkState.clawnetExternalId,
+    limit: 1,
+  });
+
+  const template = templateEntities[0];
+  if (!template) return;
+
+  const templateData = template.data as Record<string, unknown>;
+  const skills = Array.isArray(templateData.skills) ? (templateData.skills as string[]) : [];
+
+  if (skills.length === 0) return;
+
+  // Invoke the agent to configure its skills
+  const skillList = skills.join(", ");
+  await ctx.agents.invoke(agentId, companyId, {
+    prompt: `Configure your skills: ${skillList}`,
+    reason: "ClawNet skill distribution",
+  });
+
+  ctx.logger.info("Distributed ClawNet skills to agent", {
+    agentId,
+    companyId,
+    templateSlug: linkState.clawnetExternalId,
+    skills,
+  });
+
+  // Mark distribution as complete (idempotent guard for future calls)
+  await ctx.state.set(
+    {
+      scopeKind: "agent",
+      scopeId: agentId,
+      stateKey: STATE_KEYS.skillsDistributed,
+    },
+    {
+      distributedAt: new Date().toISOString(),
+      skills,
+      templateSlug: linkState.clawnetExternalId,
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Sync logic
 // ---------------------------------------------------------------------------
 
@@ -308,6 +379,12 @@ function registerEventHandlers(ctx: PluginContext): void {
       payload: event.payload,
       occurredAt: event.occurredAt,
     });
+
+    // Distribute skills when a linked agent transitions to idle (hire approved)
+    const newStatus = (event.payload as Record<string, unknown>)?.newStatus;
+    if (newStatus === "idle" && event.entityId) {
+      await distributeClawNetSkills(ctx, event.entityId, event.companyId);
+    }
   });
 
   ctx.events.on("agent.created", async (event: PluginEvent) => {
@@ -352,6 +429,9 @@ function registerEventHandlers(ctx: PluginContext): void {
           autoLinked: true,
         },
       );
+
+      // Distribute template skills immediately after auto-linking
+      await distributeClawNetSkills(ctx, event.entityId, event.companyId);
     }
   });
 }
@@ -552,10 +632,24 @@ function registerDataHandlers(ctx: PluginContext): void {
           role: agent.role,
         };
 
+        // Read skills-distributed state for this agent
+        const skillsDistributedState = (await ctx.state.get({
+          scopeKind: "agent",
+          scopeId: agent.id,
+          stateKey: STATE_KEYS.skillsDistributed,
+        })) as {
+          distributedAt: string;
+          skills: string[];
+          templateSlug: string;
+        } | null;
+
         return {
           paperclipAgent,
           clawnetLink: linkState,
           clawnetTemplate,
+          skillsDistributed: skillsDistributedState
+            ? { distributedAt: skillsDistributedState.distributedAt, skills: skillsDistributedState.skills }
+            : null,
         };
       }),
     );
@@ -566,6 +660,63 @@ function registerDataHandlers(ctx: PluginContext): void {
       linkedCount: fleetEntries.filter((e) => e.clawnetLink !== null).length,
       fleet: fleetEntries,
     };
+  });
+
+  // List routine-execution issues grouped by agent
+  ctx.data.register(DATA_KEYS.agentRoutines, async (params) => {
+    const companyId = typeof params.companyId === "string" ? params.companyId : "";
+    if (!companyId) {
+      throw new Error("companyId is required");
+    }
+
+    try {
+      const paperclipAgents = await ctx.agents.list({ companyId, limit: 200, offset: 0 });
+
+      // For each ClawNet-linked agent, fetch recent issues and filter for routine_execution origin
+      const executionIssuesByAgent: Record<
+        string,
+        { issueId: string; title: string; status: string; originId: string | null }[]
+      > = {};
+
+      await Promise.all(
+        paperclipAgents.map(async (agent) => {
+          // Only check agents that are linked to a ClawNet template
+          const linkState = await ctx.state.get({
+            scopeKind: "agent",
+            scopeId: agent.id,
+            stateKey: STATE_KEYS.clawnetLink,
+          });
+
+          if (!linkState) return;
+
+          const issues = await ctx.issues.list({
+            companyId,
+            assigneeAgentId: agent.id,
+            limit: 50,
+          });
+
+          const routineIssues = issues
+            .filter((issue) => issue.originKind === "routine_execution")
+            .map((issue) => ({
+              issueId: issue.id,
+              title: issue.title,
+              status: issue.status,
+              originId: issue.originId ?? null,
+            }));
+
+          if (routineIssues.length > 0) {
+            executionIssuesByAgent[agent.id] = routineIssues;
+          }
+        }),
+      );
+
+      return { executionIssuesByAgent, available: true };
+    } catch (error) {
+      ctx.logger.warn("Failed to fetch routine activity", {
+        error: summarizeError(error),
+      });
+      return { executionIssuesByAgent: {}, available: false };
+    }
   });
 }
 

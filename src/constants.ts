@@ -81,6 +81,7 @@ export const DATA_KEYS = {
   clawnetOrganizations: "clawnet-organizations",
   syncStatus: "sync-status",
   fleetSummary: "fleet-summary",
+  agentRoutines: "agent-routines",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -110,6 +111,7 @@ export const EVENT_TYPES = {
 export const STATE_KEYS = {
   syncCursor: "clawnet-sync-cursor",
   clawnetLink: "clawnet-link",
+  skillsDistributed: "clawnet-skills-distributed",
 } as const;
 
 // ---------------------------------------------------------------------------

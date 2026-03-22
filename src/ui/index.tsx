@@ -200,6 +200,32 @@ type OrganizationListResponse = {
   total: number;
 };
 
+type RoutineExecutionIssue = {
+  issueId: string;
+  title: string;
+  status: string;
+  originId: string | null;
+};
+
+type AgentRoutinesResponse = {
+  executionIssuesByAgent: Record<string, RoutineExecutionIssue[]>;
+  available: boolean;
+};
+
+type FleetSummaryEntry = {
+  paperclipAgent: { id: string; name: string; status: string; role: string };
+  clawnetLink: { clawnetExternalId: string } | null;
+  clawnetTemplate: ClawNetAgent | null;
+  skillsDistributed: { distributedAt: string; skills: string[] } | null;
+};
+
+type FleetSummaryResponse = {
+  totalPaperclipAgents: number;
+  totalClawnetAgents: number;
+  linkedCount: number;
+  fleet: FleetSummaryEntry[];
+};
+
 type FleetStatusEvent = {
   agentId: string;
   status: string;
@@ -770,14 +796,43 @@ function SearchBar({
   );
 }
 
+function RoutineActivityBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "3px",
+        borderRadius: "999px",
+        border: "1px solid color-mix(in srgb, #2563eb 40%, var(--border))",
+        padding: "2px 7px",
+        fontSize: "10px",
+        fontWeight: 600,
+        background: "color-mix(in srgb, #2563eb 10%, transparent)",
+        color: "#2563eb",
+      }}
+      title={`${count} routine execution${count === 1 ? "" : "s"}`}
+    >
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polyline points="23 4 23 10 17 10" />
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+      </svg>
+      {count}
+    </span>
+  );
+}
+
 function AgentCard({
   agent,
   onSelect,
   onHire,
+  routineCount,
 }: {
   agent: ClawNetAgent;
   onSelect: () => void;
   onHire: () => void;
+  routineCount?: number;
 }) {
   const colorIndicator = agent.color ?? "var(--muted-foreground)";
 
@@ -856,6 +911,7 @@ function AgentCard({
             flexShrink: 0,
           }}
         >
+          <RoutineActivityBadge count={routineCount ?? 0} />
           <OnChainBadge txId={agent.latestTxId} />
           <StarCount count={agent.starCount} />
           <TrustBadge score={agent.trustScore} />
@@ -908,10 +964,12 @@ function AgentDetail({
   agent,
   onBack,
   onHire,
+  routineIssues,
 }: {
   agent: ClawNetAgent;
   onBack: () => void;
   onHire: () => void;
+  routineIssues?: RoutineExecutionIssue[];
 }) {
   return (
     <div style={layoutStack}>
@@ -1015,6 +1073,67 @@ function AgentDetail({
             <span style={{ fontSize: "12px", fontFamily: "monospace" }}>
               {agent.color}
             </span>
+          </div>
+        </Section>
+      ) : null}
+
+      {routineIssues && routineIssues.length > 0 ? (
+        <Section title="Routine Activity">
+          <div style={{ display: "grid", gap: "8px" }}>
+            {routineIssues.map((issue) => {
+              const statusColor: Record<string, string> = {
+                done: "#16a34a",
+                in_progress: "#2563eb",
+                in_review: "#d97706",
+                blocked: "#dc2626",
+                cancelled: "#6b7280",
+                todo: "#6b7280",
+                backlog: "#6b7280",
+              };
+              const dotColor = statusColor[issue.status] ?? "#6b7280";
+
+              return (
+                <div
+                  key={issue.issueId}
+                  style={{
+                    ...subtleCardStyle,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "10px 12px",
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: "7px",
+                      height: "7px",
+                      borderRadius: "50%",
+                      background: dotColor,
+                      flexShrink: 0,
+                    }}
+                    aria-label={issue.status}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 500,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {issue.title}
+                    </div>
+                    <div style={{ fontSize: "10px", opacity: 0.55, marginTop: "2px" }}>
+                      {issue.status.replace(/_/g, " ")}
+                      {issue.originId ? ` \u00b7 routine ${truncateText(issue.originId, 10)}` : ""}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </Section>
       ) : null}
@@ -1309,6 +1428,41 @@ export function ClawNetMarketplacePage({ context }: PluginPageProps) {
     syncParams,
   );
 
+  // Routine activity data (execution issues by agent)
+  const routineParams = useMemo(
+    () => (companyId ? { companyId } : {}),
+    [companyId],
+  );
+  const { data: routineData } = usePluginData<AgentRoutinesResponse>(
+    "agent-routines",
+    routineParams,
+  );
+
+  // Fleet summary for cross-referencing Paperclip agents with ClawNet templates
+  const { data: fleetData } = usePluginData<FleetSummaryResponse>(
+    "fleet-summary",
+    routineParams,
+  );
+
+  // Build lookup: ClawNet slug -> routine execution issues
+  const routinesBySlug = useMemo(() => {
+    const map = new Map<string, RoutineExecutionIssue[]>();
+    if (!routineData?.available || !fleetData?.fleet) return map;
+
+    for (const entry of fleetData.fleet) {
+      if (!entry.clawnetLink || !entry.clawnetTemplate) continue;
+      const slug = entry.clawnetTemplate.slug;
+      const agentId = entry.paperclipAgent.id;
+      const issues = routineData.executionIssuesByAgent[agentId];
+      if (issues && issues.length > 0) {
+        const existing = map.get(slug) ?? [];
+        map.set(slug, [...existing, ...issues]);
+      }
+    }
+
+    return map;
+  }, [routineData, fleetData]);
+
   // Manual sync action
   const triggerSync = usePluginAction("trigger-sync");
   const [syncing, setSyncing] = useState(false);
@@ -1383,12 +1537,14 @@ export function ClawNetMarketplacePage({ context }: PluginPageProps) {
 
   // Agent detail view
   if (detailView) {
+    const detailRoutineIssues = routinesBySlug.get(detailView.agent.slug) ?? [];
     return (
       <div style={{ ...layoutStack, maxWidth: "800px" }}>
         <AgentDetail
           agent={detailView.agent}
           onBack={() => setDetailView(null)}
           onHire={() => handleHireAgent(detailView.agent)}
+          routineIssues={detailRoutineIssues}
         />
       </div>
     );
@@ -1501,6 +1657,7 @@ export function ClawNetMarketplacePage({ context }: PluginPageProps) {
                     agent={agent}
                     onSelect={() => setDetailView({ agent })}
                     onHire={() => handleHireAgent(agent)}
+                    routineCount={routinesBySlug.get(agent.slug)?.length}
                   />
                 ))}
               </div>

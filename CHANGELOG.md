@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.0.11
+
+### Added
+- Skill distribution: automatically assign ClawNet template skills when a hired agent becomes active
+- Routine awareness: surface routine-execution issues per agent in marketplace UI
+- `agent-routines` data handler for routine activity data
+- `issues.read` capability for execution issue queries
+
+### Changed
+- `agent.status_changed` handler triggers skill distribution when agent goes idle
+- `agent.created` handler triggers skill distribution after auto-linking
+- Fleet summary includes `skillsDistributed` status per agent
+
 ## 0.0.10
 
 ### Added

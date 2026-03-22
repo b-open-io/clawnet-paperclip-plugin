@@ -229,6 +229,218 @@ describe("ClawNet event handlers", () => {
     const createdLog = harness.logs.find((l) => l.message === "New agent created");
     expect(createdLog).toBeDefined();
   });
+
+  it("distributes skills when linked agent goes idle", async () => {
+    // Seed a ClawNet template with skills
+    await seedClawNetAgent(harness, "scout-bot", "ScoutBot", {
+      skills: ["code-review", "deploy"],
+    });
+
+    // Seed a Paperclip agent
+    harness.seed({
+      agents: [
+        {
+          id: "pa-1",
+          companyId: "co-1",
+          name: "ScoutBot",
+          status: "running",
+          role: "worker",
+          model: "claude-sonnet-4-20250514",
+          systemPrompt: null,
+          nameKey: "scout",
+          adapterType: "claude-code",
+          costLimitUsd: null,
+          projectId: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as any,
+      ],
+    });
+
+    // Manually link the agent to the template
+    await harness.ctx.state.set(
+      { scopeKind: "agent", scopeId: "pa-1", stateKey: STATE_KEYS.clawnetLink },
+      { clawnetExternalId: "scout-bot", linkedAt: new Date().toISOString(), autoLinked: true },
+    );
+
+    // Transition agent to idle
+    await harness.emit(
+      "agent.status_changed",
+      { newStatus: "idle", oldStatus: "running" },
+      { entityId: "pa-1", entityType: "agent", companyId: "co-1" },
+    );
+
+    // Verify skills were distributed
+    const distributedState = harness.getState({
+      scopeKind: "agent",
+      scopeId: "pa-1",
+      stateKey: STATE_KEYS.skillsDistributed,
+    }) as { distributedAt: string; skills: string[]; templateSlug: string } | undefined;
+
+    expect(distributedState).toBeDefined();
+    expect(distributedState!.skills).toEqual(["code-review", "deploy"]);
+    expect(distributedState!.templateSlug).toBe("scout-bot");
+    expect(distributedState!.distributedAt).toBeDefined();
+
+    // Verify agent was invoked
+    const invokeLog = harness.logs.find(
+      (l) => l.message === "Distributed ClawNet skills to agent",
+    );
+    expect(invokeLog).toBeDefined();
+    expect(invokeLog!.meta?.skills).toEqual(["code-review", "deploy"]);
+  });
+
+  it("skips skill distribution if already distributed (idempotent)", async () => {
+    // Seed a ClawNet template with skills
+    await seedClawNetAgent(harness, "scout-bot", "ScoutBot", {
+      skills: ["code-review"],
+    });
+
+    // Seed a Paperclip agent
+    harness.seed({
+      agents: [
+        {
+          id: "pa-1",
+          companyId: "co-1",
+          name: "ScoutBot",
+          status: "running",
+          role: "worker",
+          model: "claude-sonnet-4-20250514",
+          systemPrompt: null,
+          nameKey: "scout",
+          adapterType: "claude-code",
+          costLimitUsd: null,
+          projectId: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as any,
+      ],
+    });
+
+    // Link the agent
+    await harness.ctx.state.set(
+      { scopeKind: "agent", scopeId: "pa-1", stateKey: STATE_KEYS.clawnetLink },
+      { clawnetExternalId: "scout-bot", linkedAt: new Date().toISOString(), autoLinked: true },
+    );
+
+    // Mark skills as already distributed
+    await harness.ctx.state.set(
+      { scopeKind: "agent", scopeId: "pa-1", stateKey: STATE_KEYS.skillsDistributed },
+      { distributedAt: "2026-03-01T00:00:00.000Z", skills: ["code-review"], templateSlug: "scout-bot" },
+    );
+
+    // Transition agent to idle
+    await harness.emit(
+      "agent.status_changed",
+      { newStatus: "idle", oldStatus: "running" },
+      { entityId: "pa-1", entityType: "agent", companyId: "co-1" },
+    );
+
+    // Verify no new distribution log (idempotent guard prevented it)
+    const distributeLogs = harness.logs.filter(
+      (l) => l.message === "Distributed ClawNet skills to agent",
+    );
+    expect(distributeLogs).toHaveLength(0);
+  });
+
+  it("skips skill distribution for unlinked agents", async () => {
+    // Seed a Paperclip agent without a ClawNet link
+    harness.seed({
+      agents: [
+        {
+          id: "pa-1",
+          companyId: "co-1",
+          name: "Standalone",
+          status: "running",
+          role: "worker",
+          model: "claude-sonnet-4-20250514",
+          systemPrompt: null,
+          nameKey: "standalone",
+          adapterType: "claude-code",
+          costLimitUsd: null,
+          projectId: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as any,
+      ],
+    });
+
+    // Transition agent to idle (no link exists)
+    await harness.emit(
+      "agent.status_changed",
+      { newStatus: "idle", oldStatus: "running" },
+      { entityId: "pa-1", entityType: "agent", companyId: "co-1" },
+    );
+
+    // Verify no distribution occurred
+    const distributedState = harness.getState({
+      scopeKind: "agent",
+      scopeId: "pa-1",
+      stateKey: STATE_KEYS.skillsDistributed,
+    });
+    expect(distributedState).toBeUndefined();
+
+    const distributeLogs = harness.logs.filter(
+      (l) => l.message === "Distributed ClawNet skills to agent",
+    );
+    expect(distributeLogs).toHaveLength(0);
+  });
+
+  it("agent.created auto-link triggers skill distribution", async () => {
+    // Seed a ClawNet template with skills
+    await seedClawNetAgent(harness, "scout-bot", "ScoutBot", {
+      skills: ["code-review", "deploy", "test-runner"],
+    });
+
+    // Seed a Paperclip agent with matching name
+    harness.seed({
+      agents: [
+        {
+          id: "pa-1",
+          companyId: "co-1",
+          name: "ScoutBot",
+          status: "idle",
+          role: "worker",
+          model: "claude-sonnet-4-20250514",
+          systemPrompt: null,
+          nameKey: "scout",
+          adapterType: "claude-code",
+          costLimitUsd: null,
+          projectId: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as any,
+      ],
+    });
+
+    // Emit agent.created — should auto-link AND distribute skills
+    await harness.emit(
+      "agent.created",
+      { agentId: "pa-1" },
+      { entityId: "pa-1", entityType: "agent", companyId: "co-1" },
+    );
+
+    // Verify auto-link was set
+    const linkState = harness.getState({
+      scopeKind: "agent",
+      scopeId: "pa-1",
+      stateKey: STATE_KEYS.clawnetLink,
+    }) as { clawnetExternalId: string; autoLinked: boolean } | undefined;
+
+    expect(linkState).toBeDefined();
+    expect(linkState!.clawnetExternalId).toBe("scout-bot");
+
+    // Verify skills were distributed
+    const distributedState = harness.getState({
+      scopeKind: "agent",
+      scopeId: "pa-1",
+      stateKey: STATE_KEYS.skillsDistributed,
+    }) as { distributedAt: string; skills: string[]; templateSlug: string } | undefined;
+
+    expect(distributedState).toBeDefined();
+    expect(distributedState!.skills).toEqual(["code-review", "deploy", "test-runner"]);
+    expect(distributedState!.templateSlug).toBe("scout-bot");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -481,6 +693,98 @@ describe("ClawNet data handlers", () => {
     it("throws when companyId is missing", async () => {
       await expect(
         harness.getData(DATA_KEYS.fleetSummary, {}),
+      ).rejects.toThrow("companyId is required");
+    });
+  });
+
+  describe("agent-routines", () => {
+    it("returns empty when no linked agents have routine issues", async () => {
+      harness.seed({
+        agents: [
+          {
+            id: "pa-1",
+            companyId: "co-1",
+            name: "TestBot",
+            status: "idle",
+            role: "worker",
+            model: "claude-sonnet-4-20250514",
+            systemPrompt: null,
+            nameKey: "test",
+            adapterType: "claude-code",
+            costLimitUsd: null,
+            projectId: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          } as any,
+        ],
+      });
+
+      const result = await harness.getData<{
+        executionIssuesByAgent: Record<string, unknown[]>;
+        available: boolean;
+      }>(DATA_KEYS.agentRoutines, { companyId: "co-1" });
+
+      expect(result.available).toBe(true);
+      expect(result.executionIssuesByAgent).toEqual({});
+    });
+
+    it("returns grouped execution issues for linked agents", async () => {
+      harness.seed({
+        agents: [
+          {
+            id: "pa-1",
+            companyId: "co-1",
+            name: "TestBot",
+            status: "idle",
+            role: "worker",
+            model: "claude-sonnet-4-20250514",
+            systemPrompt: null,
+            nameKey: "test",
+            adapterType: "claude-code",
+            costLimitUsd: null,
+            projectId: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          } as any,
+        ],
+        issues: [
+          {
+            id: "issue-1",
+            companyId: "co-1",
+            title: "Routine run 1",
+            status: "completed",
+            assigneeAgentId: "pa-1",
+            originKind: "routine_execution",
+            originId: "routine-abc",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          } as any,
+        ],
+      });
+
+      await seedClawNetAgent(harness, "test-bot", "TestBot");
+
+      // Link the agent to the template
+      await harness.ctx.state.set(
+        { scopeKind: "agent", scopeId: "pa-1", stateKey: STATE_KEYS.clawnetLink },
+        { clawnetExternalId: "test-bot", autoLinked: true },
+      );
+
+      const result = await harness.getData<{
+        executionIssuesByAgent: Record<string, { issueId: string; title: string; status: string; originId: string }[]>;
+        available: boolean;
+      }>(DATA_KEYS.agentRoutines, { companyId: "co-1" });
+
+      expect(result.available).toBe(true);
+      expect(result.executionIssuesByAgent["pa-1"]).toBeDefined();
+      expect(result.executionIssuesByAgent["pa-1"].length).toBe(1);
+      expect(result.executionIssuesByAgent["pa-1"][0].issueId).toBe("issue-1");
+      expect(result.executionIssuesByAgent["pa-1"][0].originId).toBe("routine-abc");
+    });
+
+    it("throws when companyId is missing", async () => {
+      await expect(
+        harness.getData(DATA_KEYS.agentRoutines, {}),
       ).rejects.toThrow("companyId is required");
     });
   });
