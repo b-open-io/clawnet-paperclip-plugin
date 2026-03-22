@@ -816,18 +816,37 @@ function registerActionHandlers(ctx: PluginContext): void {
       throw new Error("companyId, slug, and displayName are required");
     }
 
-    // Build the hire prompt
+    // Build the hire prompt with registry reference
+    const config = await getConfig(ctx);
+    const registryBase = config.clawnetApiUrl || DEFAULT_CONFIG.clawnetApiUrl;
+    const agentApiUrl = `${registryBase}/api/v1/agents/${encodeURIComponent(slug)}`;
+
     const promptLines = [
-      `Hire a new agent from the ClawNet registry:`,
+      `Hire a new agent from the ClawNet on-chain registry.`,
+      ``,
+      `Agent summary:`,
       `- Name: ${displayName}`,
       `- Slug: ${slug}`,
       model ? `- Model: ${model}` : null,
       color ? `- Color: ${color}` : null,
       description ? `- Role: ${description}` : null,
-      `- Adapter: claude_local`,
       skills.length > 0 ? `- Skills: ${skills.join(", ")}` : null,
       ``,
-      `Use POST /api/companies/${companyId}/agent-hires to create this agent with role "general" and adapterType "claude_local".`,
+      `Full agent definition (system prompt, skills, tools, version history):`,
+      `  curl -s ${agentApiUrl}`,
+      ``,
+      `Steps:`,
+      `1. Fetch the full agent definition: curl -s ${agentApiUrl}`,
+      `2. Create the agent via POST /api/companies/${companyId}/agent-hires with:`,
+      `   - name: "${displayName}"`,
+      `   - adapterType: "claude_local"`,
+      `   - role: "general"`,
+      model ? `   - model: "${model}"` : null,
+      color ? `   - color: "${color}"` : null,
+      `3. After creation, set the agent's instructions using the systemPrompt from the registry response:`,
+      `   PUT /api/companies/${companyId}/agents/{agentId}/instructions/files`,
+      `   Body: { "path": "AGENTS.md", "content": <systemPrompt from registry> }`,
+      `4. Install the agent's skills: the registry response includes a skills array — use clawnet add <slug> for each`,
     ]
       .filter((line): line is string => line !== null)
       .join("\n");
