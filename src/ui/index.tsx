@@ -148,6 +148,7 @@ type ClawNetAgent = {
   attestations: string[];
   skills: string[];
   createdAt: string;
+  latestTxId?: string;
 };
 
 type ClawNetSkill = {
@@ -157,6 +158,29 @@ type ClawNetSkill = {
   description: string | null;
   category: string | null;
   starCount: number;
+  latestTxId?: string;
+  language?: string;
+};
+
+type ClawNetOrganizationAgent = {
+  slug: string;
+  role?: string;
+  reportsTo?: string;
+};
+
+type ClawNetOrganization = {
+  id: string;
+  slug: string;
+  displayName: string;
+  description: string | null;
+  authorBapId: string;
+  agents: ClawNetOrganizationAgent[];
+  skills?: string[];
+  color?: string;
+  icon?: string;
+  latestTxId?: string;
+  starCount: number;
+  createdAt: number;
 };
 
 type AgentListResponse = {
@@ -168,6 +192,11 @@ type AgentListResponse = {
 
 type SkillListResponse = {
   skills: ClawNetSkill[];
+  total: number;
+};
+
+type OrganizationListResponse = {
+  organizations: ClawNetOrganization[];
   total: number;
 };
 
@@ -401,6 +430,54 @@ function TrustBadge({ score }: { score: number | null }) {
   );
 }
 
+function OnChainBadge({ txId }: { txId?: string }) {
+  if (!txId) return null;
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "3px",
+        fontSize: "10px",
+        fontWeight: 600,
+        textTransform: "uppercase",
+        letterSpacing: "0.04em",
+        color: "#16a34a",
+      }}
+      title={`On-chain: ${txId}`}
+    >
+      <span
+        style={{
+          display: "inline-block",
+          width: "6px",
+          height: "6px",
+          borderRadius: "50%",
+          background: "#16a34a",
+          flexShrink: 0,
+        }}
+      />
+      On-chain
+    </span>
+  );
+}
+
+function LanguageBadge({ language }: { language?: string }) {
+  if (!language) return null;
+  return (
+    <span
+      style={{
+        fontSize: 11,
+        background: "var(--muted)",
+        padding: "1px 6px",
+        borderRadius: 3,
+        fontFamily: "monospace",
+      }}
+    >
+      {language}
+    </span>
+  );
+}
+
 function EmptyState({ message }: { message: string }) {
   return (
     <div
@@ -595,7 +672,7 @@ export function ClawNetFleetWidget({ context }: PluginWidgetProps) {
 
 const AGENTS_PER_PAGE = 20;
 
-type MarketplaceTab = "agents" | "skills";
+type MarketplaceTab = "agents" | "skills" | "organizations";
 type AgentDetailView = { agent: ClawNetAgent } | null;
 
 function TabBar({
@@ -608,6 +685,7 @@ function TabBar({
   const tabs: { key: MarketplaceTab; label: string }[] = [
     { key: "agents", label: "Agents" },
     { key: "skills", label: "Skills" },
+    { key: "organizations", label: "Organizations" },
   ];
 
   return (
@@ -778,6 +856,7 @@ function AgentCard({
             flexShrink: 0,
           }}
         >
+          <OnChainBadge txId={agent.latestTxId} />
           <StarCount count={agent.starCount} />
           <TrustBadge score={agent.trustScore} />
         </div>
@@ -968,6 +1047,8 @@ function SkillCard({ skill }: { skill: ClawNetSkill }) {
           <div style={{ fontSize: "11px", opacity: 0.55 }}>{skill.slug}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+          <LanguageBadge language={skill.language} />
+          <OnChainBadge txId={skill.latestTxId} />
           {skill.category ? <Pill label={skill.category} /> : null}
           <StarCount count={skill.starCount} />
         </div>
@@ -977,6 +1058,117 @@ function SkillCard({ skill }: { skill: ClawNetSkill }) {
           {truncateText(skill.description, 140)}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function OrganizationCard({ org }: { org: ClawNetOrganization }) {
+  const colorIndicator = org.color ?? "var(--muted-foreground)";
+  const agentCount = org.agents.length;
+  const skillCount = org.skills?.length ?? 0;
+
+  return (
+    <div style={{ ...subtleCardStyle, display: "grid", gap: "10px" }}>
+      {/* Header: icon/color dot, name, author, stars, on-chain */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+        }}
+      >
+        {org.icon ? (
+          <img
+            src={org.icon}
+            alt=""
+            style={{
+              width: "28px",
+              height: "28px",
+              borderRadius: "6px",
+              objectFit: "cover",
+              flexShrink: 0,
+            }}
+          />
+        ) : (
+          <span
+            style={{
+              display: "inline-block",
+              width: "10px",
+              height: "10px",
+              borderRadius: "3px",
+              background: colorIndicator,
+              flexShrink: 0,
+            }}
+          />
+        )}
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div
+            style={{
+              fontSize: "13px",
+              fontWeight: 600,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {org.displayName}
+          </div>
+          <div style={{ fontSize: "11px", opacity: 0.55 }}>{org.slug}</div>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            flexShrink: 0,
+          }}
+        >
+          <OnChainBadge txId={org.latestTxId} />
+          <StarCount count={org.starCount} />
+        </div>
+      </div>
+
+      {/* Description */}
+      {org.description ? (
+        <div style={mutedTextStyle}>
+          {truncateText(org.description, 140)}
+        </div>
+      ) : null}
+
+      {/* Footer: counts + author */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "8px",
+        }}
+      >
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+          {agentCount > 0 ? (
+            <Pill
+              label={`${agentCount} agent${agentCount === 1 ? "" : "s"}`}
+              color={org.color ?? undefined}
+            />
+          ) : null}
+          {skillCount > 0 ? (
+            <Pill
+              label={`${skillCount} skill${skillCount === 1 ? "" : "s"}`}
+            />
+          ) : null}
+        </div>
+        <span
+          style={{
+            fontSize: "10px",
+            opacity: 0.5,
+            fontFamily: "monospace",
+            flexShrink: 0,
+          }}
+          title={org.authorBapId}
+        >
+          {truncateText(org.authorBapId, 12)}
+        </span>
+      </div>
     </div>
   );
 }
@@ -1093,6 +1285,20 @@ export function ClawNetMarketplacePage({ context }: PluginPageProps) {
     error: skillsError,
   } = usePluginData<SkillListResponse>("clawnet-skills", skillParams);
 
+  // Organization data
+  const orgParams = useMemo(
+    () =>
+      companyId
+        ? { companyId, search: debouncedSearch || undefined }
+        : {},
+    [companyId, debouncedSearch],
+  );
+  const {
+    data: orgData,
+    loading: orgsLoading,
+    error: orgsError,
+  } = usePluginData<OrganizationListResponse>("clawnet-organizations", orgParams);
+
   // Sync status header
   const syncParams = useMemo(
     () => (companyId ? { companyId } : {}),
@@ -1206,6 +1412,9 @@ export function ClawNetMarketplacePage({ context }: PluginPageProps) {
   const skills = skillData?.skills ?? [];
   const skillTotal = skillData?.total ?? 0;
 
+  const organizations = orgData?.organizations ?? [];
+  const orgTotal = orgData?.total ?? 0;
+
   return (
     <div style={layoutStack}>
       {/* Page header */}
@@ -1248,7 +1457,9 @@ export function ClawNetMarketplacePage({ context }: PluginPageProps) {
         placeholder={
           activeTab === "agents"
             ? "Search agents by name, skill, or model..."
-            : "Search skills by name or category..."
+            : activeTab === "skills"
+              ? "Search skills by name or category..."
+              : "Search organizations by name..."
         }
       />
 
@@ -1334,6 +1545,37 @@ export function ClawNetMarketplacePage({ context }: PluginPageProps) {
               <div style={{ display: "grid", gap: "10px" }}>
                 {skills.map((skill) => (
                   <SkillCard key={skill.id} skill={skill} />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {/* Organizations tab content */}
+      {activeTab === "organizations" ? (
+        <div style={layoutStack}>
+          {orgsLoading ? (
+            <LoadingIndicator message="Loading organizations..." />
+          ) : orgsError ? (
+            <ErrorBanner message={orgsError.message} />
+          ) : organizations.length === 0 ? (
+            <EmptyState
+              message={
+                debouncedSearch
+                  ? `No organizations found matching "${debouncedSearch}".`
+                  : "No organizations available. Try syncing the registry."
+              }
+            />
+          ) : (
+            <>
+              <div style={{ fontSize: "12px", opacity: 0.6 }}>
+                {orgTotal} organization{orgTotal === 1 ? "" : "s"} available
+                {debouncedSearch ? ` matching "${debouncedSearch}"` : ""}
+              </div>
+              <div style={{ display: "grid", gap: "10px" }}>
+                {organizations.map((org) => (
+                  <OrganizationCard key={org.id} org={org} />
                 ))}
               </div>
             </>

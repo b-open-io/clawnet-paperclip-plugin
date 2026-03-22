@@ -64,6 +64,10 @@ export interface ClawNetAgentVersion {
   aipSignature?: string;
   signerAddress?: string;
   opReturnHex?: string;
+  manifestOutpoint?: string;
+  packageOutputs?: string;
+  manifestVout?: number;
+  packageType?: string;
 }
 
 /** A skill record as returned by the ClawNet registry. */
@@ -84,6 +88,63 @@ export interface ClawNetSkill {
   downloadCountAllTime: number;
   createdAt: number;
   updatedAt: number;
+  language?: string;
+}
+
+export interface ClawNetOrganizationAgent {
+  slug: string;
+  role?: string;
+  reportsTo?: string;
+}
+
+export interface ClawNetOrganization {
+  _id: string;
+  slug: string;
+  name: string;
+  displayName: string;
+  description: string;
+  authorBapId: string;
+  agents: ClawNetOrganizationAgent[];
+  skills?: string[];
+  color?: string;
+  icon?: string;
+  homepage?: string;
+  tags?: string[];
+  latestTxId?: string;
+  deleted: boolean;
+  starCount: number;
+  downloadCount: number;
+  downloadCountAllTime: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ClawNetOrganizationListResponse {
+  organizations: ClawNetOrganization[];
+  hasMore: boolean;
+  cursor?: string;
+}
+
+export interface ClawNetOrganizationDetailResponse {
+  organization: ClawNetOrganization;
+  resolvedAgents: Array<{
+    slug: string;
+    name: string;
+    displayName: string;
+    description: string;
+    model: string;
+    color: string;
+    version: string;
+    role?: string;
+    reportsTo?: string;
+  }>;
+  resolvedSkills: Array<{
+    slug: string;
+    name: string;
+    description: string;
+    version: string;
+  }>;
+  author: { bapId: string; pubkey: string } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -117,7 +178,7 @@ export interface ClawNetAgentDetailResponse {
 
 /** GET /api/v1/search returns mixed results with type discriminators. */
 export interface ClawNetSearchResult {
-  type: "agent" | "skill";
+  type: "agent" | "skill" | "organization";
   slug: string;
   displayName: string;
   description: string;
@@ -154,9 +215,16 @@ export interface ListSkillsParams {
 
 export interface SearchAllParams {
   query: string;
-  type?: "agent" | "skill" | "all";
+  type?: "agent" | "skill" | "organization" | "all";
   limit?: number;
   cursor?: string;
+}
+
+export interface ListOrganizationsParams {
+  sort?: ClawNetSortOrder;
+  limit?: number;
+  cursor?: string;
+  author?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -220,7 +288,13 @@ export interface ClawNetClient {
   listSkills(params?: ListSkillsParams): Promise<ClawNetSkillListResponse>;
 
   /** GET /api/v1/search — vector + keyword search across agents and skills. */
-  searchAll(query: string, type?: "agent" | "skill" | "all"): Promise<ClawNetSearchResponse>;
+  searchAll(query: string, type?: "agent" | "skill" | "organization" | "all"): Promise<ClawNetSearchResponse>;
+
+  /** GET /api/v1/organizations — paginated organization list. */
+  listOrganizations(params?: ListOrganizationsParams): Promise<ClawNetOrganizationListResponse>;
+
+  /** GET /api/v1/organizations/:slug — full organization detail. */
+  getOrganization(slug: string): Promise<ClawNetOrganizationDetailResponse>;
 }
 
 /**
@@ -316,7 +390,7 @@ export function createClawNetClient(config: ClawNetClientConfig): ClawNetClient 
       });
     },
 
-    async searchAll(query: string, type?: "agent" | "skill" | "all"): Promise<ClawNetSearchResponse> {
+    async searchAll(query: string, type?: "agent" | "skill" | "organization" | "all"): Promise<ClawNetSearchResponse> {
       if (!query) {
         throw new Error("query is required");
       }
@@ -324,6 +398,22 @@ export function createClawNetClient(config: ClawNetClientConfig): ClawNetClient 
         query,
         type: type ?? "all",
       });
+    },
+
+    async listOrganizations(params?: ListOrganizationsParams): Promise<ClawNetOrganizationListResponse> {
+      return request<ClawNetOrganizationListResponse>("/api/v1/organizations", {
+        sort: params?.sort,
+        limit: params?.limit !== undefined ? String(params.limit) : undefined,
+        cursor: params?.cursor,
+        author: params?.author,
+      });
+    },
+
+    async getOrganization(slug: string): Promise<ClawNetOrganizationDetailResponse> {
+      if (!slug) throw new Error("slug is required");
+      return request<ClawNetOrganizationDetailResponse>(
+        `/api/v1/organizations/${encodeURIComponent(slug)}`,
+      );
     },
   };
 }

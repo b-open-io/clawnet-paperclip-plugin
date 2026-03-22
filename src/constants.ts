@@ -68,6 +68,7 @@ export const STREAM_CHANNELS = {
 export const ENTITY_TYPES = {
   agent: "clawnet-agent",
   skill: "clawnet-skill",
+  organization: "clawnet-organization",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -77,6 +78,7 @@ export const ENTITY_TYPES = {
 export const DATA_KEYS = {
   clawnetAgents: "clawnet-agents",
   clawnetSkills: "clawnet-skills",
+  clawnetOrganizations: "clawnet-organizations",
   syncStatus: "sync-status",
   fleetSummary: "fleet-summary",
 } as const;

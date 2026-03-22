@@ -36,6 +36,7 @@ type SyncCursor = {
   lastSyncAt: string;
   agentCount: number;
   skillCount: number;
+  orgCount: number;
   durationMs: number;
 };
 
@@ -183,11 +184,55 @@ async function performSync(ctx: PluginContext, streamProgress: boolean): Promise
     });
   }
 
+  // --- Sync organizations ---
+  let orgCount = 0;
+  try {
+    if (streamProgress) {
+      ctx.streams.emit(STREAM_CHANNELS.syncProgress, {
+        phase: "organizations",
+        status: "fetching",
+        message: "Fetching organizations from ClawNet registry...",
+      });
+    }
+
+    let orgCursor: string | undefined;
+    do {
+      const orgResponse = await client.listOrganizations({ cursor: orgCursor });
+      for (const org of orgResponse.organizations) {
+        await ctx.entities.upsert({
+          entityType: ENTITY_TYPES.organization,
+          scopeKind: "instance",
+          externalId: org.slug || org._id,
+          title: org.displayName || org.name,
+          status: org.deleted ? "deleted" : "active",
+          data: org as unknown as Record<string, unknown>,
+        });
+        orgCount++;
+      }
+      orgCursor = orgResponse.hasMore ? orgResponse.cursor : undefined;
+    } while (orgCursor);
+
+    if (streamProgress) {
+      ctx.streams.emit(STREAM_CHANNELS.syncProgress, {
+        phase: "organizations",
+        status: "complete",
+        message: `Synced ${orgCount} organizations`,
+        count: orgCount,
+      });
+    }
+  } catch (err) {
+    // Organizations endpoint may not exist on older registries
+    ctx.logger.warn("Organization sync skipped", {
+      reason: summarizeError(err),
+    });
+  }
+
   // --- Persist cursor ---
   const cursor: SyncCursor = {
     lastSyncAt: new Date().toISOString(),
     agentCount,
     skillCount,
+    orgCount,
     durationMs: Date.now() - startedAt,
   };
 
@@ -197,7 +242,7 @@ async function performSync(ctx: PluginContext, streamProgress: boolean): Promise
     ctx.streams.emit(STREAM_CHANNELS.syncProgress, {
       phase: "done",
       status: "complete",
-      message: `Sync complete: ${agentCount} agents, ${skillCount} skills in ${cursor.durationMs}ms`,
+      message: `Sync complete: ${agentCount} agents, ${skillCount} skills, ${orgCount} organizations in ${cursor.durationMs}ms`,
       cursor,
     });
     ctx.streams.close(STREAM_CHANNELS.syncProgress);
@@ -207,6 +252,7 @@ async function performSync(ctx: PluginContext, streamProgress: boolean): Promise
   ctx.logger.info("ClawNet sync complete", {
     agentCount,
     skillCount,
+    orgCount,
     durationMs: cursor.durationMs,
   });
 
@@ -230,6 +276,7 @@ function registerJobHandlers(ctx: PluginContext): void {
         runId: job.runId,
         agentCount: cursor.agentCount,
         skillCount: cursor.skillCount,
+        orgCount: cursor.orgCount,
         durationMs: cursor.durationMs,
       });
     } catch (error) {
@@ -394,6 +441,47 @@ function registerDataHandlers(ctx: PluginContext): void {
     return { skills, total: skills.length };
   });
 
+  // List synced ClawNet organization entities
+  ctx.data.register(DATA_KEYS.clawnetOrganizations, async (params) => {
+    const { search, limit } = getListParams(params);
+
+    let entities = await ctx.entities.list({
+      entityType: ENTITY_TYPES.organization,
+      limit,
+      offset: 0,
+    });
+
+    if (search) {
+      const term = search.toLowerCase();
+      entities = entities.filter((entity) => {
+        const titleMatch = entity.title?.toLowerCase().includes(term);
+        const data = entity.data as Record<string, unknown>;
+        const nameMatch = typeof data.name === "string" && data.name.toLowerCase().includes(term);
+        const descMatch = typeof data.description === "string" && data.description.toLowerCase().includes(term);
+        return titleMatch || nameMatch || descMatch;
+      });
+    }
+
+    // Transform entities into the UI's expected ClawNetOrganization shape
+    const organizations = entities.map((entity) => {
+      const d = entity.data as Record<string, unknown>;
+      return {
+        id: entity.externalId ?? entity.id,
+        slug: (d.slug as string) ?? entity.externalId ?? "",
+        displayName: entity.title ?? (d.displayName as string) ?? (d.name as string) ?? "",
+        description: (d.description as string) ?? null,
+        agents: Array.isArray(d.agents) ? d.agents : [],
+        skills: Array.isArray(d.skills) ? d.skills : [],
+        color: (d.color as string) ?? null,
+        icon: (d.icon as string) ?? null,
+        starCount: (d.starCount as number) ?? 0,
+        createdAt: entity.createdAt,
+      };
+    });
+
+    return { organizations, total: organizations.length };
+  });
+
   // Return last sync time, counts from ctx.state
   ctx.data.register(DATA_KEYS.syncStatus, async () => {
     const cursor = await getSyncCursor(ctx);
@@ -401,6 +489,7 @@ function registerDataHandlers(ctx: PluginContext): void {
       lastSyncAt: cursor?.lastSyncAt ?? null,
       agentCount: cursor?.agentCount ?? 0,
       skillCount: cursor?.skillCount ?? 0,
+      orgCount: cursor?.orgCount ?? 0,
       durationMs: cursor?.durationMs ?? 0,
     };
   });
@@ -1056,6 +1145,7 @@ const plugin: PaperclipPlugin = definePlugin({
             lastSync: cursor.lastSyncAt,
             agentCount: cursor.agentCount,
             skillCount: cursor.skillCount,
+            orgCount: cursor.orgCount ?? 0,
             syncAgeMs: lastSyncAge,
           },
         };
@@ -1063,11 +1153,12 @@ const plugin: PaperclipPlugin = definePlugin({
 
       return {
         status: "ok",
-        message: `Healthy. ${cursor.agentCount} agents, ${cursor.skillCount} skills synced.`,
+        message: `Healthy. ${cursor.agentCount} agents, ${cursor.skillCount} skills, ${cursor.orgCount ?? 0} organizations synced.`,
         details: {
           lastSync: cursor.lastSyncAt,
           agentCount: cursor.agentCount,
           skillCount: cursor.skillCount,
+          orgCount: cursor.orgCount ?? 0,
           durationMs: cursor.durationMs,
         },
       };
