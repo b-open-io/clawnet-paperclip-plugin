@@ -473,6 +473,7 @@ function registerDataHandlers(ctx: PluginContext): void {
         description: (d.description as string) ?? null,
         model: (d.model as string) ?? null,
         color: (d.color as string) ?? null,
+        icon: (d.icon as string) ?? null,
         starCount: (d.starCount as number) ?? 0,
         trustScore: null, // Not yet available from ClawNet
         attestations: [], // Not yet available from ClawNet

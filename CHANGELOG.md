@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.12
+
+### Fixed
+- Agent icons not showing — `clawnet-agents` data handler was missing `icon` field in entity-to-UI mapping
+
 ## 0.0.11
 
 ### Added
