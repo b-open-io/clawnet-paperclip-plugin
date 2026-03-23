@@ -9,6 +9,8 @@
 - `issues.read` capability for execution issue queries
 
 ### Changed
+- Hire prompt now references ClawNet registry API for full agent definition (systemPrompt, skills, tools)
+- Hire instructions include steps to set agent instructions via Paperclip API
 - `agent.status_changed` handler triggers skill distribution when agent goes idle
 - `agent.created` handler triggers skill distribution after auto-linking
 - Fleet summary includes `skillsDistributed` status per agent
