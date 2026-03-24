@@ -366,6 +366,7 @@ async function performSync(ctx: PluginContext, streamProgress: boolean): Promise
     agentCount,
     skillCount,
     orgCount,
+    appCount,
     durationMs: cursor.durationMs,
   });
 
@@ -390,6 +391,7 @@ function registerJobHandlers(ctx: PluginContext): void {
         agentCount: cursor.agentCount,
         skillCount: cursor.skillCount,
         orgCount: cursor.orgCount,
+        appCount: cursor.appCount,
         durationMs: cursor.durationMs,
       });
     } catch (error) {
@@ -613,6 +615,7 @@ function registerDataHandlers(ctx: PluginContext): void {
       agentCount: cursor?.agentCount ?? 0,
       skillCount: cursor?.skillCount ?? 0,
       orgCount: cursor?.orgCount ?? 0,
+      appCount: cursor?.appCount ?? 0,
       durationMs: cursor?.durationMs ?? 0,
     };
   });
@@ -1359,6 +1362,7 @@ const plugin: PaperclipPlugin = definePlugin({
             agentCount: cursor.agentCount,
             skillCount: cursor.skillCount,
             orgCount: cursor.orgCount ?? 0,
+            appCount: cursor.appCount ?? 0,
             syncAgeMs: lastSyncAge,
           },
         };
@@ -1366,12 +1370,13 @@ const plugin: PaperclipPlugin = definePlugin({
 
       return {
         status: "ok",
-        message: `Healthy. ${cursor.agentCount} agents, ${cursor.skillCount} skills, ${cursor.orgCount ?? 0} organizations synced.`,
+        message: `Healthy. ${cursor.agentCount} agents, ${cursor.skillCount} skills, ${cursor.orgCount ?? 0} organizations, ${cursor.appCount ?? 0} apps synced.`,
         details: {
           lastSync: cursor.lastSyncAt,
           agentCount: cursor.agentCount,
           skillCount: cursor.skillCount,
           orgCount: cursor.orgCount ?? 0,
+          appCount: cursor.appCount ?? 0,
           durationMs: cursor.durationMs,
         },
       };
