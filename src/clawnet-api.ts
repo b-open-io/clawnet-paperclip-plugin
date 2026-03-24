@@ -295,6 +295,9 @@ export interface ClawNetClient {
 
   /** GET /api/v1/organizations/:slug — full organization detail. */
   getOrganization(slug: string): Promise<ClawNetOrganizationDetailResponse>;
+
+  /** GET /api/v1/apps — paginated app list. */
+  listApps(params?: ListOrganizationsParams): Promise<{ apps: ClawNetOrganization[]; hasMore: boolean; cursor?: string }>;
 }
 
 /**
@@ -414,6 +417,15 @@ export function createClawNetClient(config: ClawNetClientConfig): ClawNetClient 
       return request<ClawNetOrganizationDetailResponse>(
         `/api/v1/organizations/${encodeURIComponent(slug)}`,
       );
+    },
+
+    async listApps(params?: ListOrganizationsParams): Promise<{ apps: ClawNetOrganization[]; hasMore: boolean; cursor?: string }> {
+      return request<{ apps: ClawNetOrganization[]; hasMore: boolean; cursor?: string }>("/api/v1/apps", {
+        sort: params?.sort,
+        limit: params?.limit !== undefined ? String(params.limit) : undefined,
+        cursor: params?.cursor,
+        author: params?.author,
+      });
     },
   };
 }

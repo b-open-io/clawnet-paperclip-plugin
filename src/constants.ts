@@ -69,6 +69,7 @@ export const ENTITY_TYPES = {
   agent: "clawnet-agent",
   skill: "clawnet-skill",
   organization: "clawnet-organization",
+  app: "clawnet-app",
 } as const;
 
 // ---------------------------------------------------------------------------
