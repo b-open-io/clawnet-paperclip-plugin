@@ -37,6 +37,7 @@ type SyncCursor = {
   agentCount: number;
   skillCount: number;
   orgCount: number;
+  appCount: number;
   durationMs: number;
 };
 
@@ -298,12 +299,53 @@ async function performSync(ctx: PluginContext, streamProgress: boolean): Promise
     });
   }
 
+  // --- Sync apps ---
+  let appCount = 0;
+  try {
+    if (streamProgress) {
+      ctx.streams.emit(STREAM_CHANNELS.syncProgress, {
+        phase: "apps",
+        status: "fetching",
+        message: "Fetching apps from ClawNet registry...",
+      });
+    }
+
+    let appCursor: string | undefined;
+    do {
+      const appResponse = await client.listApps({ cursor: appCursor });
+      for (const app of appResponse.apps) {
+        await ctx.entities.upsert({
+          entityType: ENTITY_TYPES.app,
+          scopeKind: "instance",
+          externalId: app.slug || app._id,
+          title: app.displayName || app.name,
+          status: app.deleted ? "deleted" : "active",
+          data: app as unknown as Record<string, unknown>,
+        });
+        appCount++;
+      }
+      appCursor = appResponse.hasMore ? appResponse.cursor : undefined;
+    } while (appCursor);
+
+    if (streamProgress) {
+      ctx.streams.emit(STREAM_CHANNELS.syncProgress, {
+        phase: "apps",
+        status: "complete",
+        message: `Synced ${appCount} apps`,
+        count: appCount,
+      });
+    }
+  } catch (err) {
+    ctx.logger.warn("App sync skipped", { reason: summarizeError(err) });
+  }
+
   // --- Persist cursor ---
   const cursor: SyncCursor = {
     lastSyncAt: new Date().toISOString(),
     agentCount,
     skillCount,
     orgCount,
+    appCount,
     durationMs: Date.now() - startedAt,
   };
 
@@ -313,7 +355,7 @@ async function performSync(ctx: PluginContext, streamProgress: boolean): Promise
     ctx.streams.emit(STREAM_CHANNELS.syncProgress, {
       phase: "done",
       status: "complete",
-      message: `Sync complete: ${agentCount} agents, ${skillCount} skills, ${orgCount} organizations in ${cursor.durationMs}ms`,
+      message: `Sync complete: ${agentCount} agents, ${skillCount} skills, ${orgCount} organizations, ${appCount} apps in ${cursor.durationMs}ms`,
       cursor,
     });
     ctx.streams.close(STREAM_CHANNELS.syncProgress);
